@@ -1,9 +1,10 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
+import * as Lantern from '../lib/lantern/lantern.js';
 import {Audit} from './audit.js';
 import {NetworkRecords} from '../computed/network-records.js';
 import * as i18n from '../lib/i18n/i18n.js';
@@ -11,6 +12,7 @@ import {MainThreadTasks} from '../computed/main-thread-tasks.js';
 import {PageDependencyGraph} from '../computed/page-dependency-graph.js';
 import {LoadSimulator} from '../computed/load-simulator.js';
 import {getJavaScriptURLs, getAttributableURLForTask} from '../lib/tracehouse/task-summary.js';
+import {TotalBlockingTime} from '../computed/metrics/total-blocking-time.js';
 
 /** We don't always have timing data for short tasks, if we're missing timing data. Treat it as though it were 0ms. */
 const DEFAULT_TIMING = {startTime: 0, endTime: 0, duration: 0};
@@ -22,7 +24,7 @@ const UIStrings = {
   /** Description of a diagnostic LH audit that shows the user the longest running tasks that occur when the page loads. */
   description: 'Lists the longest tasks on the main thread, ' +
     'useful for identifying worst contributors to input delay. ' +
-    '[Learn how to avoid long main-thread tasks](https://web.dev/long-tasks-devtools/)',
+    '[Learn how to avoid long main-thread tasks](https://web.dev/articles/optimize-long-tasks)',
   /** [ICU Syntax] Label identifying the number of long-running CPU tasks that occurred while loading a web page. */
   displayValue: `{itemCount, plural,
   =1 {# long task found}
@@ -66,8 +68,8 @@ class LongTasks extends Audit {
       scoreDisplayMode: Audit.SCORING_MODES.INFORMATIVE,
       title: str_(UIStrings.title),
       description: str_(UIStrings.description),
+      requiredArtifacts: ['traces', 'devtoolsLogs', 'URL', 'GatherContext'],
       guidanceLevel: 1,
-      requiredArtifacts: ['traces', 'devtoolsLogs', 'URL'],
     };
   }
 
@@ -84,7 +86,7 @@ class LongTasks extends Audit {
    * most time will be attributed to 'other' (the category of the top-level
    * RunTask). See pruning in `PageDependencyGraph.linkCPUNodes`.
    * @param {LH.Artifacts.TaskNode} task
-   * @param {Map<LH.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
+   * @param {Map<Lantern.Types.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
    * @param {Map<TaskGroupIds, number>} [timeByTaskGroup]
    * @return {{startTime: number, duration: number, timeByTaskGroup: Map<TaskGroupIds, number>}}
    */
@@ -115,7 +117,7 @@ class LongTasks extends Audit {
   /**
    * @param {Array<LH.Artifacts.TaskNode>} longTasks
    * @param {Set<string>} jsUrls
-   * @param {Map<LH.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
+   * @param {Map<Lantern.Types.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
    * @return {LH.Audit.Details.DebugData}
    */
   static makeDebugData(longTasks, jsUrls, taskTimingsByEvent) {
@@ -153,7 +155,7 @@ class LongTasks extends Audit {
   /**
    * Get timing from task, overridden by taskTimingsByEvent if provided.
    * @param {LH.Artifacts.TaskNode} task
-   * @param {Map<LH.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
+   * @param {Map<Lantern.Types.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} taskTimingsByEvent
    * @return {Timing}
    */
   static getTiming(task, taskTimingsByEvent) {
@@ -180,7 +182,10 @@ class LongTasks extends Audit {
     const devtoolsLog = artifacts.devtoolsLogs[LongTasks.DEFAULT_PASS];
     const networkRecords = await NetworkRecords.request(devtoolsLog, context);
 
-    /** @type {Map<LH.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} */
+    const metricComputationData = Audit.makeMetricComputationDataInput(artifacts, context);
+    const tbtResult = await TotalBlockingTime.request(metricComputationData, context);
+
+    /** @type {Map<Lantern.Types.TraceEvent, LH.Gatherer.Simulation.NodeTiming>|undefined} */
     let taskTimingsByEvent;
 
     if (settings.throttlingMethod === 'simulate') {
@@ -245,6 +250,9 @@ class LongTasks extends Audit {
       notApplicable: results.length === 0,
       details: tableDetails,
       displayValue,
+      metricSavings: {
+        TBT: tbtResult.timing,
+      },
     };
   }
 }

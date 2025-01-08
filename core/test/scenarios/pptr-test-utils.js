@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2021 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import fs from 'fs';
@@ -11,7 +11,7 @@ import * as puppeteer from 'puppeteer-core';
 import {getChromePath} from 'chrome-launcher';
 
 import {Server} from '../../../cli/test/fixtures/static-server.js';
-import {LH_ROOT} from '../../../root.js';
+import {LH_ROOT} from '../../../shared/root.js';
 
 /** @typedef {InstanceType<typeof import('../../../cli/test/fixtures/static-server.js').Server>} StaticServer */
 
@@ -44,32 +44,18 @@ function createTestState() {
     serverBaseUrl: '',
     secondaryServerBaseUrl: '',
 
-    /**
-     * @param {number=} port
-     * @param {number=} secondaryPort
-     */
-    installServerHooks(port = 10200, secondaryPort = 10503) {
+    installSetupAndTeardownHooks() {
       before(async () => {
-        this.server = new Server(port);
-        this.secondaryServer = new Server(secondaryPort);
-        await this.server.listen(port, '127.0.0.1');
-        await this.secondaryServer.listen(secondaryPort, '127.0.0.1');
+        this.server = new Server(10200);
+        this.secondaryServer = new Server(10503);
+        await this.server.listen(10200, '127.0.0.1');
+        await this.secondaryServer.listen(10503, '127.0.0.1');
         this.serverBaseUrl = `http://localhost:${this.server.getPort()}`;
         this.secondaryServerBaseUrl = `http://localhost:${this.secondaryServer.getPort()}`;
       });
 
-      after(async () => {
-        await this.server.close();
-        await this.secondaryServer.close();
-      });
-    },
-
-    installSetupAndTeardownHooks() {
-      this.installServerHooks();
-
       before(async () => {
         this.browser = await puppeteer.launch({
-          headless: true,
           executablePath: getChromePath(),
           ignoreDefaultArgs: ['--enable-automation'],
         });
@@ -97,6 +83,11 @@ function createTestState() {
 
       after(async () => {
         await this.browser.close();
+      });
+
+      after(async () => {
+        await this.server.close();
+        await this.secondaryServer.close();
       });
     },
 

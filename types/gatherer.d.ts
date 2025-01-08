@@ -1,15 +1,12 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {Protocol as Crdp} from 'devtools-protocol/types/protocol.js';
 import {ProtocolMapping as CrdpMappings} from 'devtools-protocol/types/protocol-mapping.js';
 
-import {NetworkNode as _NetworkNode} from '../core/lib/dependency-graph/network-node.js';
-import {CPUNode as _CPUNode} from '../core/lib/dependency-graph/cpu-node.js';
-import {Simulator as _Simulator} from '../core/lib/dependency-graph/simulator/simulator.js';
 import {ExecutionContext} from '../core/gather/driver/execution-context.js';
 import {NetworkMonitor} from '../core/gather/driver/network-monitor.js';
 import {Fetcher} from '../core/gather/fetcher.js';
@@ -20,6 +17,7 @@ import Config from './config.js';
 import Result from './lhr/lhr.js';
 import Protocol from './protocol.js';
 import Puppeteer from './puppeteer.js';
+import * as Lantern from '../core/lib/lantern/lantern.js';
 
 type CrdpEvents = CrdpMappings.Events;
 type CrdpCommands = CrdpMappings.Commands;
@@ -35,7 +33,9 @@ declare module Gatherer {
     once<TEvent extends keyof CrdpEvents>(event: TEvent, callback: (...args: CrdpEvents[TEvent]) => void): void;
     off<TEvent extends keyof CrdpEvents>(event: TEvent, callback: (...args: CrdpEvents[TEvent]) => void): void;
     sendCommand<TMethod extends keyof CrdpCommands>(method: TMethod, ...params: CrdpCommands[TMethod]['paramsType']): Promise<CrdpCommands[TMethod]['returnType']>;
+    sendCommandAndIgnore<TMethod extends keyof CrdpCommands>(method: TMethod, ...params: CrdpCommands[TMethod]['paramsType']): Promise<void>;
     dispose(): Promise<void>;
+    onCrashPromise(): Promise<never>;
   }
 
   interface Driver {
@@ -133,38 +133,12 @@ declare module Gatherer {
   type AnyGathererInstance = GathererInstanceExpander<Gatherer.DependencyKey>
 
   namespace Simulation {
-    type GraphNode = import('../core/lib/dependency-graph/base-node.js').Node;
-    type GraphNetworkNode = _NetworkNode;
-    type GraphCPUNode = _CPUNode;
-    type Simulator = _Simulator;
-
-    interface MetricCoefficients {
-      intercept: number;
-      optimistic: number;
-      pessimistic: number;
-    }
-
-    interface Options {
-      rtt?: number;
-      throughput?: number;
-      observedThroughput: number;
-      maximumConcurrentRequests?: number;
-      cpuSlowdownMultiplier?: number;
-      layoutTaskMultiplier?: number;
-      additionalRttByOrigin?: Map<string, number>;
-      serverResponseTimeByOrigin?: Map<string, number>;
-    }
-
-    interface NodeTiming {
-      startTime: number;
-      endTime: number;
-      duration: number;
-    }
-
-    interface Result {
-      timeInMs: number;
-      nodeTimings: Map<GraphNode, NodeTiming>;
-    }
+    type GraphNode = Lantern.Graph.Node<Artifacts.NetworkRequest>;
+    type GraphNetworkNode = Lantern.Graph.NetworkNode<Artifacts.NetworkRequest>;
+    type GraphCPUNode = Lantern.Graph.CPUNode<Artifacts.NetworkRequest>;
+    type Simulator = Lantern.Simulation.Simulator<Artifacts.NetworkRequest>;
+    type NodeTiming = Lantern.Types.Simulation.NodeTiming;
+    type Result = Lantern.Simulation.Result<Artifacts.NetworkRequest>;
   }
 }
 

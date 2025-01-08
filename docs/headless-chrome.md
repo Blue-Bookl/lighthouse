@@ -22,6 +22,11 @@ Kick off run of Lighthouse using headless Chrome:
 lighthouse --chrome-flags="--headless" https://github.com
 ```
 
+## (CLI headless=new)
+
+There is also the new `--headless=new` option, which includes functionality that
+was explicitly omitted from the original headless browser.
+
 ## CLI (xvfb)
 
 Alternatively, you can run full Chrome + xvfb instead of headless mode. These steps worked on Debian Jessie:
@@ -96,8 +101,10 @@ const chromeLauncher = require('chrome-launcher');
 function launchChromeAndRunLighthouse(url, flags = {}, config = null) {
   return chromeLauncher.launch(flags).then(chrome => {
     flags.port = chrome.port;
-    return lighthouse(url, flags, config).then(results =>
-      chrome.kill().then(() => results));
+    return lighthouse(url, flags, config).then(results => {
+      chrome.kill();
+      return results;
+    }
   });
 }
 

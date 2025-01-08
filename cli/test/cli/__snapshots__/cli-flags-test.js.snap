@@ -383,10 +383,6 @@ Object {
   "_": Array [
     "http://www.example.com",
   ],
-  "budget-path": "path/to/my/budget-from-config.json",
-  "budgetPath": "path/to/my/budget-from-config.json",
-  "budgets-path": "path/to/my/budget-from-command-line.json",
-  "budgetsPath": "path/to/my/budget-from-command-line.json",
   "channel": "cli",
   "chrome-flags": "--window-size 800,600",
   "chrome-ignore-default-flags": false,

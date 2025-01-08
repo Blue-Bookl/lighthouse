@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert/strict';
@@ -11,8 +11,8 @@ import {readJson} from '../../test-utils.js';
 
 const traceAllFrames = readJson('../../fixtures/traces/frame-metrics-m89.json', import.meta);
 const devtoolsLogAllFrames = readJson('../../fixtures/traces/frame-metrics-m89.devtools.log.json', import.meta);
-const traceMainFrame = readJson('../../fixtures/traces/lcp-m78.json', import.meta);
-const devtoolsLogMainFrame = readJson('../../fixtures/traces/lcp-m78.devtools.log.json', import.meta);
+const traceMainFrame = readJson('../../fixtures/artifacts/paul/trace.json', import.meta);
+const devtoolsLogMainFrame = readJson('../../fixtures/artifacts/paul/devtoolslog.json', import.meta);
 const invalidTrace = readJson('../../fixtures/traces/progressive-app-m60.json', import.meta);
 const invalidDevtoolsLog = readJson('../../fixtures/traces/progressive-app-m60.devtools.log.json', import.meta);
 
@@ -54,9 +54,11 @@ describe('Metrics: LCP from all frames', () => {
       {gatherContext, trace: traceMainFrame, devtoolsLog: devtoolsLogMainFrame, settings},
       context
     );
-    await expect(result).toEqual({
-      timestamp: 713038144775,
-      timing: 1121.711,
-    });
+    await expect(result).toMatchInlineSnapshot(`
+Object {
+  "timestamp": 343577475882,
+  "timing": 291.834,
+}
+`);
   });
 });

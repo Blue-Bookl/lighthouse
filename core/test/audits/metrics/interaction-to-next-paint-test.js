@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2022 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2022 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import InteractionToNextPaint from '../../../audits/metrics/interaction-to-next-paint.js';
@@ -38,7 +38,7 @@ describe('Interaction to Next Paint', () => {
     });
   });
 
-  it('falls back Responsiveness timing if no m103 EventTiming events', async () => {
+  it('throw error if no m103 EventTiming events', async () => {
     const {artifacts, context} = getTestData();
     const clonedTrace = JSON.parse(JSON.stringify(artifacts.traces.defaultPass));
     for (let i = 0; i < clonedTrace.traceEvents.length; i++) {
@@ -47,15 +47,8 @@ describe('Interaction to Next Paint', () => {
     }
     artifacts.traces.defaultPass = clonedTrace;
 
-    const result = await InteractionToNextPaint.audit(artifacts, context);
-    // Conveniently, the matching responsiveness event has slightly different
-    // duration than the matching interaction event so can be tested against.
-    expect(result).toEqual({
-      score: 0.67,
-      numericValue: 364,
-      numericUnit: 'millisecond',
-      displayValue: expect.toBeDisplayString('360 ms'),
-    });
+    const promise = InteractionToNextPaint.audit(artifacts, context);
+    await expect(promise).rejects.toThrow('UNSUPPORTED_OLD_CHROME');
   });
 
   it('is not applicable if using simulated throttling', async () => {

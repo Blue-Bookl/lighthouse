@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -17,13 +17,11 @@ import {createRequire} from 'module';
 import esMain from 'es-main';
 import esbuild from 'esbuild';
 // @ts-expect-error: plugin has no types.
-import PubAdsPlugin from 'lighthouse-plugin-publisher-ads';
-// @ts-expect-error: plugin has no types.
 import SoftNavPlugin from 'lighthouse-plugin-soft-navigation';
 
 import * as plugins from './esbuild-plugins.js';
 import {Runner} from '../core/runner.js';
-import {LH_ROOT} from '../root.js';
+import {LH_ROOT} from '../shared/root.js';
 import {readJson} from '../core/test/test-utils.js';
 import {nodeModulesPolyfillPlugin} from '../third-party/esbuild-plugins-polyfills/esbuild-polyfills.js';
 
@@ -37,10 +35,7 @@ const require = createRequire(import.meta.url);
 const GIT_READABLE_REF =
   execSync(process.env.CI ? 'git rev-parse HEAD' : 'git describe').toString().trim();
 
-// HACK: manually include the lighthouse-plugin-publisher-ads audits.
-/** @type {Array<string>} */
-// @ts-expect-error
-const pubAdsAudits = PubAdsPlugin.audits.map(a => a.path);
+// HACK: manually include plugin audits.
 /** @type {Array<string>} */
 // @ts-expect-error
 const softNavAudits = SoftNavPlugin.audits.map(a => a.path);
@@ -58,6 +53,7 @@ const today = (() => {
   const day = new Intl.DateTimeFormat('en', {day: '2-digit'}).format(date);
   return `${month} ${day} ${year}`;
 })();
+/* eslint-disable max-len */
 const pkg = readJson(`${LH_ROOT}/package.json`);
 const banner = `
 /**
@@ -66,10 +62,14 @@ const banner = `
  * ${pkg.description}
  *
  * @homepage ${pkg.homepage}
- * @author   ${pkg.author}
+ * @author   Copyright 2023 ${pkg.author}
  * @license  ${pkg.license}
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
  */
 `.trim();
+/* eslint-enable max-len */
 
 /**
  * Bundle starting at entryPath, writing the minified result to distPath.
@@ -88,10 +88,6 @@ async function buildBundle(entryPath, distPath, opts = {minify: true}) {
 
   // Include plugins.
   if (isDevtools(entryPath) || isLightrider(entryPath)) {
-    dynamicModulePaths.push('lighthouse-plugin-publisher-ads');
-    pubAdsAudits.forEach(pubAdAudit => {
-      dynamicModulePaths.push(pubAdAudit);
-    });
     dynamicModulePaths.push('lighthouse-plugin-soft-navigation');
     softNavAudits.forEach(softNavAudit => {
       dynamicModulePaths.push(softNavAudit);
@@ -118,6 +114,10 @@ async function buildBundle(entryPath, distPath, opts = {minify: true}) {
 
   const modulesToIgnore = [
     'puppeteer-core',
+    // ScreenRecorder.js imports `child_process` functions that are unavailable in bundled environments.
+    // This module is imported dynamically in a function we never use, so safe to ignore:
+    // https://github.com/puppeteer/puppeteer/blob/35f9c6d1e699ea37e89ef3bbb7940f5599df4724/packages/puppeteer-core/src/api/Page.ts#L2365-L2369
+    'puppeteer-core/lib/esm/puppeteer/node/ScreenRecorder.js',
     'pako/lib/zlib/inflate.js',
     '@sentry/node',
     'source-map',
@@ -136,6 +136,11 @@ async function buildBundle(entryPath, distPath, opts = {minify: true}) {
     shimsObj[`${LH_ROOT}/shared/localization/locales.js`] = 'export const locales = {};';
   }
 
+  // Don't bundle third-party-web (CDT provides its own copy). This prevents duplications of 40+ KB.
+  if (isDevtools(entryPath)) {
+    shimsObj['third-party-web/nostats-subset.js'] = 'export default {};';
+  }
+
   for (const modulePath of modulesToIgnore) {
     shimsObj[modulePath] = 'export default {}';
   }
@@ -151,6 +156,7 @@ async function buildBundle(entryPath, distPath, opts = {minify: true}) {
     treeShaking: true,
     sourcemap: 'linked',
     banner: {js: banner},
+    lineLimit: 1000,
     // Because of page-functions!
     keepNames: true,
     inject: ['./build/process-global.js'],
@@ -185,7 +191,6 @@ async function buildBundle(entryPath, distPath, opts = {minify: true}) {
         // resolved eventually.
         plugins.partialLoaders.inlineFs({
           verbose: Boolean(process.env.DEBUG),
-          ignorePaths: [require.resolve('puppeteer-core/lib/esm/puppeteer/common/Page.js')],
         }),
         plugins.partialLoaders.rmGetModuleDirectory,
         plugins.partialLoaders.replaceText({

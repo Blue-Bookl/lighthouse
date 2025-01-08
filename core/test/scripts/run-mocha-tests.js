@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2022 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2022 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -19,8 +19,11 @@ import yargs from 'yargs';
 import * as yargsHelpers from 'yargs/helpers';
 import glob from 'glob';
 
-import {LH_ROOT} from '../../../root.js';
+import {LH_ROOT} from '../../../shared/root.js';
 import {mochaGlobalSetup, mochaGlobalTeardown} from '../test-env/mocha-setup.js';
+
+// Tell gatherer to use 100 quality for FPS tests.
+process.env.LH_FPS_TEST = '1';
 
 const failedTestsDir = `${LH_ROOT}/.tmp/failing-tests`;
 
@@ -67,7 +70,6 @@ const testsToIsolate = new Set([
   'core/test/user-flow-test.js',
   'core/test/gather/driver/prepare-test.js',
   'core/test/gather/gatherers/link-elements-test.js',
-  'core/test/gather/gatherers/service-worker-test.js',
   'core/test/runner-test.js',
 
   // grep -lRE --include='-test.js' 'mockDriverSubmodules|mockRunnerModule|mockDriverModule|mockDriverSubmodules|makeMocksForGatherRunner' --include='*-test.*' --exclude-dir=node_modules
@@ -76,7 +78,6 @@ const testsToIsolate = new Set([
   'core/test/gather/timespan-runner-test.js',
   'core/test/user-flow-test.js',
   'core/test/gather/gatherers/dobetterweb/response-compression-test.js',
-  'core/test/gather/gatherers/script-elements-test.js',
   'core/test/runner-test.js',
 
   // These tend to timeout in puppeteer when run in parallel with other tests.
@@ -192,7 +193,7 @@ function getTestFiles() {
   // Collect all the possible test files, based off the provided testMatch glob pattern
   // or the default patterns defined above.
   const testsGlob = argv.testMatch || `{${defaultTestMatches.join(',')}}`;
-  const allTestFiles = glob.sync(testsGlob, {cwd: LH_ROOT});
+  const allTestFiles = glob.sync(testsGlob, {cwd: LH_ROOT, ignore: '**/node_modules/**'});
 
   // If provided, filter the test files using a basic string includes on the absolute path of
   // each test file.

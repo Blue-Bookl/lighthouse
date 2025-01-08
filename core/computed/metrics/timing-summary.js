@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2019 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2019 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {ProcessedTrace} from '../processed-trace.js';
@@ -9,7 +9,6 @@ import {ProcessedNavigation} from '../processed-navigation.js';
 import {Speedline} from '../speedline.js';
 import {FirstContentfulPaint} from './first-contentful-paint.js';
 import {FirstContentfulPaintAllFrames} from './first-contentful-paint-all-frames.js';
-import {FirstMeaningfulPaint} from './first-meaningful-paint.js';
 import {LargestContentfulPaint} from './largest-contentful-paint.js';
 import {LargestContentfulPaintAllFrames} from './largest-contentful-paint-all-frames.js';
 import {Interactive} from './interactive.js';
@@ -51,7 +50,6 @@ class TimingSummary {
     const speedline = await Speedline.request(trace, context);
     const firstContentfulPaint = await requestOrUndefined(FirstContentfulPaint, metricComputationData);
     const firstContentfulPaintAllFrames = await requestOrUndefined(FirstContentfulPaintAllFrames, metricComputationData);
-    const firstMeaningfulPaint = await requestOrUndefined(FirstMeaningfulPaint, metricComputationData);
     const largestContentfulPaint = await requestOrUndefined(LargestContentfulPaint, metricComputationData);
     const largestContentfulPaintAllFrames = await requestOrUndefined(LargestContentfulPaintAllFrames, metricComputationData);
     const interactive = await requestOrUndefined(Interactive, metricComputationData);
@@ -74,8 +72,6 @@ class TimingSummary {
       firstContentfulPaintTs: firstContentfulPaint?.timestamp,
       firstContentfulPaintAllFrames: firstContentfulPaintAllFrames?.timing,
       firstContentfulPaintAllFramesTs: firstContentfulPaintAllFrames?.timestamp,
-      firstMeaningfulPaint: firstMeaningfulPaint?.timing,
-      firstMeaningfulPaintTs: firstMeaningfulPaint?.timestamp,
       largestContentfulPaint: largestContentfulPaint?.timing,
       largestContentfulPaintTs: largestContentfulPaint?.timestamp,
       largestContentfulPaintAllFrames: largestContentfulPaintAllFrames?.timing,
@@ -107,8 +103,6 @@ class TimingSummary {
       observedFirstContentfulPaintTs: processedNavigation?.timestamps.firstContentfulPaint,
       observedFirstContentfulPaintAllFrames: processedNavigation?.timings.firstContentfulPaintAllFrames,
       observedFirstContentfulPaintAllFramesTs: processedNavigation?.timestamps.firstContentfulPaintAllFrames,
-      observedFirstMeaningfulPaint: processedNavigation?.timings.firstMeaningfulPaint,
-      observedFirstMeaningfulPaintTs: processedNavigation?.timestamps.firstMeaningfulPaint,
       observedLargestContentfulPaint: processedNavigation?.timings.largestContentfulPaint,
       observedLargestContentfulPaintTs: processedNavigation?.timestamps.largestContentfulPaint,
       observedLargestContentfulPaintAllFrames: processedNavigation?.timings.largestContentfulPaintAllFrames,

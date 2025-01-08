@@ -1,17 +1,21 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
+
+import {getNormalizedRequestTiming} from './network-records-to-devtools-log.js';
 
 const pid = 1111;
 const tid = 222;
 const browserPid = 13725;
 const rootFrame = 'ROOT_FRAME';
+const navigationId = 'NAVIGATION_ID';
 const defaultUrl = 'https://example.com/';
 const lcpNodeId = 16;
 const lcpImageUrl = 'http://www.example.com/image.png';
 
+/** @typedef {import('../lib/network-request.js').NetworkRequest} NetworkRequest */
 /** @typedef {{ts: number, duration: number, children?: Array<ChildTaskDef>}} TopLevelTaskDef */
 /** @typedef {{ts: number, duration: number, url: string | undefined, eventName?: string}} ChildTaskDef */
 /** @typedef {{frame: string}} ChildFrame */
@@ -24,6 +28,7 @@ const lcpImageUrl = 'http://www.example.com/image.png';
  * @property {number} [traceEnd]
  * @property {Array<TopLevelTaskDef>} [topLevelTasks]
  * @property {Array<ChildFrame>} [childFrames] Add a child frame with a known `frame` id for easy insertion of child frame events.
+ * @property {Array<NetworkRequest>=} networkRecords
  */
 
 /**
@@ -106,6 +111,7 @@ function createTestTrace(options) {
       data: {
         documentLoaderURL: frameUrl,
         isLoadingMainFrame: true,
+        navigationId,
       },
     },
   }, {
@@ -147,16 +153,7 @@ function createTestTrace(options) {
     ph: 'R',
     cat: 'loading,rail,devtools.timeline',
     dur: 0,
-    args: {frame: rootFrame},
-  }, {
-    name: 'firstMeaningfulPaint',
-    ts: timeOrigin + 15,
-    pid,
-    tid,
-    ph: 'R',
-    cat: 'loading,rail,devtools.timeline',
-    dur: 0,
-    args: {frame: rootFrame},
+    args: {frame: rootFrame, data: {navigationId}},
   }];
 
   if (options.childFrames) {
@@ -198,6 +195,8 @@ function createTestTrace(options) {
           nodeId: lcpNodeId,
           size: 50,
           type: 'image',
+          navigationId,
+          candidateIndex: 1,
         },
       },
     });
@@ -216,6 +215,7 @@ function createTestTrace(options) {
           DOMNodeId: lcpNodeId,
           size: 50,
           imageUrl: lcpImageUrl,
+          candidateIndex: 1,
         },
       },
     });
@@ -237,7 +237,119 @@ function createTestTrace(options) {
     traceEvents.push(getTopLevelTask({ts: options.traceEnd - 1, duration: 1}));
   }
 
-  return {traceEvents};
+  const networkRecords = options.networkRecords || [];
+  for (const record of networkRecords) {
+    // `requestId` is optional in the input test records.
+    const requestId = record.requestId ?
+      record.requestId.replaceAll(':redirect', '') :
+      String(networkRecords.indexOf(record));
+
+    let willBeRedirected = false;
+    if (record.requestId) {
+      const redirectedRequestId = record.requestId + ':redirect';
+      willBeRedirected = networkRecords.some(r => r.requestId === redirectedRequestId);
+    }
+
+    const times = getNormalizedRequestTiming(record);
+    const willSendTime = times.rendererStartTime * 1000;
+    const sendTime = times.networkRequestTime * 1000;
+    const recieveResponseTime = times.responseHeadersEndTime * 1000;
+    const endTime = times.networkEndTime * 1000;
+
+    if (times.timing.receiveHeadersStart === undefined) {
+      times.timing.receiveHeadersStart = times.timing.receiveHeadersEnd;
+    }
+
+    if (!willBeRedirected) {
+      traceEvents.push({
+        name: 'ResourceWillSendRequest',
+        ts: willSendTime,
+        pid,
+        tid,
+        ph: 'I',
+        cat: 'devtools.timeline',
+        dur: 0,
+        args: {
+          data: {
+            requestId,
+            frame: record.frameId,
+          },
+        },
+      });
+    }
+
+    traceEvents.push({
+      name: 'ResourceSendRequest',
+      ts: sendTime,
+      pid,
+      tid,
+      ph: 'I',
+      cat: 'devtools.timeline',
+      dur: 0,
+      args: {
+        data: {
+          requestId,
+          frame: record.frameId,
+          initiator: record.initiator ?? {type: 'other'},
+          priority: record.priority,
+          requestMethod: record.requestMethod,
+          resourceType: record.resourceType ?? 'Document',
+          url: record.url,
+        },
+      },
+    });
+
+    if (willBeRedirected) {
+      continue;
+    }
+
+    traceEvents.push({
+      name: 'ResourceReceiveResponse',
+      ts: recieveResponseTime,
+      pid,
+      tid,
+      ph: 'I',
+      cat: 'devtools.timeline',
+      dur: 0,
+      args: {
+        data: {
+          requestId,
+          frame: record.frameId,
+          fromCache: record.fromDiskCache || record.fromMemoryCache,
+          fromServiceWorker: record.fromWorker,
+          mimeType: record.mimeType ?? 'text/html',
+          statusCode: record.statusCode ?? 200,
+          timing: times.timing,
+          connectionId: record.connectionId ?? 140,
+          connectionReused: record.connectionReused ?? false,
+          protocol: record.protocol ?? 'http/1.1',
+        },
+      },
+    });
+
+    traceEvents.push({
+      name: 'ResourceFinish',
+      ts: endTime,
+      pid,
+      tid,
+      ph: 'I',
+      cat: 'devtools.timeline',
+      dur: 0,
+      args: {
+        data: {
+          requestId,
+          frame: record.frameId,
+          finishTime: endTime / 1000 / 1000,
+          encodedDataLength: record.transferSize ?? 0,
+          decodedBodyLength: record.resourceSize ?? 0,
+        },
+      },
+    });
+  }
+
+  return {
+    traceEvents,
+  };
 }
 
 export {

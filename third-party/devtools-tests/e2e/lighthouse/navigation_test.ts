@@ -13,7 +13,6 @@ import {
   waitFor,
   waitForElementWithTextContent,
 } from '../../shared/helper.js';
-import {describe, it} from '../../shared/mocha-extensions.js';
 import {
   clickStartButton,
   getAuditsBreakdown,
@@ -32,7 +31,7 @@ import {
 // This test will fail (by default) in headful mode, as the target page never gets painted.
 // To resolve this when debugging, just make sure the target page is visible during the lighthouse run.
 
-describe('Navigation', async function() {
+describe('Navigation', function() {
   // The tests in this suite are particularly slow
   if (this.timeout() !== 0) {
     this.timeout(60_000);
@@ -72,30 +71,30 @@ describe('Navigation', async function() {
     await navigateToLighthouseTab('lighthouse/hello.html');
     await registerServiceWorker();
 
-    await selectCategories([
-      'performance',
-      'accessibility',
-      'best-practices',
-      'seo',
-      'pwa',
-      'lighthouse-plugin-publisher-ads',
-    ]);
+    await waitFor('.lighthouse-start-view');
+    // We don't call selectCategories explicitly, but it's implied we leave all the checkboxes checked
 
     let numNavigations = 0;
-    const {target} = await getBrowserAndPages();
-    target.on('framenavigated', () => ++numNavigations);
+    const {target} = getBrowserAndPages();
+    target.on('framenavigated', () => {
+      ++numNavigations;
+    });
 
     await clickStartButton();
 
     const {lhr, artifacts, reportEl} = await waitForResult();
 
-    // 1 initial about:blank jump
-    // 1 about:blank jump + 1 navigation for the default pass
-    // 2 navigations to go to chrome://terms and back testing bfcache
-    // 1 navigation after auditing to reset state
-    assert.strictEqual(numNavigations, 6);
+    const receivedCategories = Array.from(Object.keys(lhr.categories)).sort();
+    const sentCategories = Array.from(lhr.configSettings.onlyCategories).sort();
+    assert.deepStrictEqual(receivedCategories, sentCategories);
 
-    assert.strictEqual(lhr.lighthouseVersion, '11.0.0');
+    // 1 initial about:blank jump
+    // 1 navigation for the actual page load
+    // 2 navigations to go to chrome://terms and back testing bfcache
+    // 1 refresh after auditing to reset state
+    assert.strictEqual(numNavigations, 5);
+
+    assert.strictEqual(lhr.lighthouseVersion, '12.3.0');
     assert.match(lhr.finalUrl, /^https:\/\/localhost:[0-9]+\/test\/e2e\/resources\/lighthouse\/hello.html/);
 
     assert.strictEqual(lhr.configSettings.throttlingMethod, 'simulate');
@@ -106,6 +105,12 @@ describe('Navigation', async function() {
     assert.include(lhr.configSettings.emulatedUserAgent, 'Mobile');
     assert.include(lhr.environment.networkUserAgent, 'Mobile');
 
+    const trace = artifacts.Trace;
+    assert.notOk(
+        trace.traceEvents.some((e: Record<string, unknown>) => e.cat === 'disabled-by-default-v8.cpu_profiler'),
+        'Trace contained v8 profiler events',
+    );
+
     assert.deepStrictEqual(artifacts.ViewportDimensions, {
       innerHeight: 823,
       innerWidth: 412,
@@ -115,17 +120,13 @@ describe('Navigation', async function() {
     });
 
     const {auditResults, erroredAudits, failedAudits} = getAuditsBreakdown(lhr, ['max-potential-fid']);
-    assert.strictEqual(auditResults.length, 188);
+    assert.strictEqual(auditResults.length, 157);
     assert.deepStrictEqual(erroredAudits, []);
     assert.deepStrictEqual(failedAudits.map(audit => audit.id), [
-      'installable-manifest',
-      'splash-screen',
-      'themed-omnibox',
-      'maskable-icon',
       'document-title',
       'html-has-lang',
+      'render-blocking-resources',
       'meta-description',
-      'bf-cache',
     ]);
 
     const viewTraceButton = await $textContent('View Trace', reportEl);
@@ -158,8 +159,7 @@ describe('Navigation', async function() {
     const waitForJson = await interceptNextFileSave();
 
     // For some reason the CDP click command doesn't work here even if the tools menu is open.
-    await reportEl.$eval(
-        'a[data-action="save-json"]:not(.hidden)', saveJsonEl => (saveJsonEl as HTMLElement).click());
+    await reportEl.$eval('a[data-action="save-json"]:not(.hidden)', saveJsonEl => (saveJsonEl as HTMLElement).click());
 
     const jsonContent = await waitForJson();
     assert.strictEqual(jsonContent, JSON.stringify(lhr, null, 2));
@@ -167,8 +167,7 @@ describe('Navigation', async function() {
     const waitForHtml = await interceptNextFileSave();
 
     // For some reason the CDP click command doesn't work here even if the tools menu is open.
-    await reportEl.$eval(
-        'a[data-action="save-html"]:not(.hidden)', saveHtmlEl => (saveHtmlEl as HTMLElement).click());
+    await reportEl.$eval('a[data-action="save-html"]:not(.hidden)', saveHtmlEl => (saveHtmlEl as HTMLElement).click());
 
     const htmlContent = await waitForHtml();
     const iframeHandle = await renderHtmlInIframe(htmlContent);
@@ -195,20 +194,16 @@ describe('Navigation', async function() {
     const flakyAudits = [
       'server-response-time',
       'render-blocking-resources',
+      'max-potential-fid',
     ];
 
     const {auditResults, erroredAudits, failedAudits} = getAuditsBreakdown(lhr, flakyAudits);
-    assert.strictEqual(auditResults.length, 165);
+    assert.strictEqual(auditResults.length, 157);
     assert.deepStrictEqual(erroredAudits, []);
     assert.deepStrictEqual(failedAudits.map(audit => audit.id), [
-      'installable-manifest',
-      'splash-screen',
-      'themed-omnibox',
-      'maskable-icon',
       'document-title',
       'html-has-lang',
       'meta-description',
-      'bf-cache',
     ]);
 
     const viewTraceButton = await $textContent('View Trace', reportEl);
@@ -220,6 +215,7 @@ describe('Navigation', async function() {
     await navigateToLighthouseTab('lighthouse/hello.html');
     await registerServiceWorker();
 
+    await setToolbarCheckboxWithText(true, 'Habilitar muestreo de JS');
     await setToolbarCheckboxWithText(false, 'Borrar almacenamiento');
     await selectCategories(['performance', 'best-practices']);
     await selectDevice('desktop');
@@ -227,6 +223,12 @@ describe('Navigation', async function() {
     await clickStartButton();
 
     const {reportEl, lhr, artifacts} = await waitForResult();
+
+    const trace = artifacts.Trace;
+    assert.ok(
+        trace.traceEvents.some((e: Record<string, unknown>) => e.cat === 'disabled-by-default-v8.cpu_profiler'),
+        'Trace did not contain any v8 profiler events',
+    );
 
     const {innerWidth, innerHeight, devicePixelRatio} = artifacts.ViewportDimensions;
     // TODO: Figure out why outerHeight can be different depending on OS

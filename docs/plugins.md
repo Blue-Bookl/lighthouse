@@ -47,7 +47,7 @@ To develop a Lighthouse plugin, you'll need to write three things:
 1. A `plugin.js` file to declare your plugin's audits, category name, and scoring.
 1. Custom audit files that will contain the primary logic of the checks you want to perform.
 
-To see a fully functioning example, see our [plugin recipe](./recipes/lighthouse-plugin-example/readme.md).
+To see a fully functioning example, see our [plugin recipe](./recipes/lighthouse-plugin-example/readme.md) or its [GitHub repository template](https://github.com/GoogleChrome/lighthouse-plugin-example).
 
 #### `package.json`
 
@@ -57,13 +57,14 @@ A Lighthouse plugin is just a node module with a name that starts with `lighthou
 
 ```json
 {
-  "name": "lighthouse-plugin-cats",
+  "name": "lighthouse-plugin-example",
+  "type": "module",
   "main": "plugin.js",
   "peerDependencies": {
-    "lighthouse": "^11.0.0"
+    "lighthouse": "^12.3.0"
   },
   "devDependencies": {
-    "lighthouse": "^11.0.0"
+    "lighthouse": "^12.3.0"
   }
 }
 ```
@@ -77,7 +78,7 @@ This file contains the configuration for your plugin. It can be called anything 
 ```js
 export default {
   // Additional audits to run on information Lighthouse gathered.
-  audits: [{path: 'lighthouse-plugin-cats/audits/has-cat-images.js'}],
+  audits: [{path: 'lighthouse-plugin-example/audits/has-cat-images.js'}],
 
   // A new category in the report for the plugin output.
   category: {
@@ -136,7 +137,7 @@ export default CatAudit;
 
 ```sh
 # be in your plugin directory, and have lighthouse as a devDependency.
-NODE_PATH=.. yarn lighthouse https://example.com --plugins=lighthouse-plugin-example --only-categories=lighthouse-plugin-example --view
+NODE_PATH=.. npx lighthouse -- https://example.com --plugins=lighthouse-plugin-example --only-categories=lighthouse-plugin-example --view
 # Note: we add the parent directory to NODE_PATH as a hack to allow Lighthouse to find this plugin.
 # This is useful for local development, but is not necessary when your plugin consuming from NPM as
 # a node module.
@@ -208,26 +209,26 @@ The primary objective of the audit function is to return a `score` from `0` to `
 
 #### Available Artifacts
 
-The following artifacts are available for use in the audits of Lighthouse plugins. For more detailed information on their usage and purpose, see the [type information](https://github.com/GoogleChrome/lighthouse/blob/623b789497f6c87f85d366b4038deae5dc701c90/types/artifacts.d.ts#L20-L70).
+The following artifacts are available for use in the audits of Lighthouse plugins. For more detailed information on their usage and purpose, see the [type information](https://github.com/GoogleChrome/lighthouse/blob/main/types/artifacts.d.ts#L42-L99).
 
-- `DevtoolsLog`
 - `fetchTime`
-- `settings`
-- `Trace`
 - `BenchmarkIndex`
-- `ConsoleMessages`
+- `settings`
+- `Timing`
+- `HostFormFactor`
 - `HostUserAgent`
+- `HostProduct`
+- `GatherContext`
+- `URL`
+- `ConsoleMessages`
+- `DevtoolsLog`
+- `MainDocumentContent`
 - `ImageElements`
 - `LinkElements`
 - `MetaElements`
-- `NetworkUserAgent`
-- `RuntimeExceptions`
-- `ScriptElements`
-- `Stacks`
-- `Timing`
-- `URL`
+- `Scripts`
+- `Trace`
 - `ViewportDimensions`
-- `WebAppManifest`
 
 While Lighthouse has more artifacts with information about the page than are in this list, those artifacts are considered experimental and their structure or existence could change at any time. Only use artifacts not on the list above if you are comfortable living on the bleeding edge and can tolerate unannounced breaking changes.
 

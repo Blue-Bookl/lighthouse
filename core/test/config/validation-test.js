@@ -1,15 +1,15 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-import {defaultSettings, defaultNavigationConfig} from '../../config/constants.js';
+import {defaultSettings} from '../../config/constants.js';
 import defaultConfig from '../../config/default-config.js';
 import {Audit as BaseAudit} from '../../audits/audit.js';
 import BaseGatherer from '../../gather/base-gatherer.js';
 import * as validation from '../../config/validation.js';
-import {initializeConfig} from '../../config/config.js';
+import LinkElements from '../../gather/gatherers/link-elements.js';
 
 /** @typedef {LH.Gatherer.GathererMeta['supportedModes']} SupportedModes */
 
@@ -30,20 +30,6 @@ beforeEach(() => {
 });
 
 describe('Config Validation', () => {
-  describe('assertValidConfig', () => {
-    it('should throw if multiple artifacts have the same id', async () => {
-      const {resolvedConfig} = await initializeConfig('navigation');
-      if (!resolvedConfig.artifacts) throw new Error('No config artifacts');
-
-      const imageElArtifact = resolvedConfig.artifacts.find(a => a.id === 'ImageElements');
-      if (!imageElArtifact) throw new Error('Could not find ImageElements artifact');
-
-      resolvedConfig.artifacts.push(imageElArtifact);
-
-      expect(() => validation.assertValidConfig(resolvedConfig)).toThrow(/Config defined multiple/);
-    });
-  });
-
   describe('isValidArtifactDependency', () => {
     /** @type {Array<{dependent: SupportedModes, dependency: SupportedModes, isValid: boolean}>} */
     const combinations = [
@@ -84,6 +70,37 @@ describe('Config Validation', () => {
     });
   });
 
+  describe('.assertValidArtifacts', () => {
+    it('should throw if multiple artifacts have the same id', async () => {
+      const instance = new BaseGatherer();
+      instance.meta.supportedModes = ['navigation'];
+      instance.getArtifact = () => {};
+
+      const artifacts = [
+        {id: 'Artifact1', gatherer: {instance}},
+        {id: 'Artifact1', gatherer: {instance}},
+      ];
+      const invocation = () => validation.assertValidArtifacts(artifacts);
+      expect(invocation).toThrow(/Config defined multiple/);
+    });
+
+    it('should throw if dependencies are out of order', async () => {
+      const dependentGatherer = new LinkElements();
+
+      /** @type {LH.Config.AnyArtifactDefn[]} */
+      const artifacts = [
+        {
+          id: 'LinkElements',
+          gatherer: {instance: dependentGatherer},
+          dependencies: {DevtoolsLog: {id: 'DevtoolsLog'}},
+        },
+        {id: 'DevtoolsLog', gatherer: {instance: new BaseGatherer()}},
+      ];
+      const invocation = () => validation.assertValidArtifacts(artifacts);
+      expect(invocation).toThrow(/Failed to find dependency/);
+    });
+  });
+
   describe('.assertValidArtifact', () => {
     it('should throw if gatherer does not have a meta object', () => {
       const gatherer = new BaseGatherer();
@@ -111,29 +128,6 @@ describe('Config Validation', () => {
       const artifactDefn = {id: 'NewArtifact', gatherer: gathererDefn};
       const invocation = () => validation.assertValidArtifact(artifactDefn);
       expect(invocation).toThrow(/did not define.*getArtifact/);
-    });
-  });
-
-  describe('.assertValidNavigations', () => {
-    it('should add warning if navigations uses non-fatal loadFailureMode', () => {
-      /** @type {Array<LH.Config.NavigationDefn>} */
-      const navigations = [{...defaultNavigationConfig, loadFailureMode: 'warn', artifacts: []}];
-      const {warnings} = validation.assertValidNavigations(navigations);
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('but had a failure mode');
-      expect(navigations[0].loadFailureMode).toEqual('fatal');
-    });
-
-
-    it('should throw if navigations do not have unique ids', () => {
-      /** @type {Array<LH.Config.NavigationDefn>} */
-      const navigations = [
-        {...defaultNavigationConfig, id: 'first', artifacts: []},
-        {...defaultNavigationConfig, id: 'second', artifacts: []},
-        {...defaultNavigationConfig, id: 'first', artifacts: []},
-      ];
-      const invocation = () => validation.assertValidNavigations(navigations);
-      expect(invocation).toThrow(/must have unique.*but "first" was repeated/);
     });
   });
 

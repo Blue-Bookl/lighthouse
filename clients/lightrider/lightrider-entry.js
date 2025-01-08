@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /* global globalThis */
@@ -9,8 +9,8 @@
 import {Buffer} from 'buffer';
 
 import log from 'lighthouse-logger';
-import {CDPBrowser} from 'puppeteer-core/lib/esm/puppeteer/common/Browser.js';
-import {Connection as PptrConnection} from 'puppeteer-core/lib/esm/puppeteer/common/Connection.js';
+import {CdpBrowser} from 'puppeteer-core/lib/esm/puppeteer/cdp/Browser.js';
+import {Connection as PptrConnection} from 'puppeteer-core/lib/esm/puppeteer/cdp/Connection.js';
 
 import lighthouse, * as api from '../../core/index.js';
 import {LighthouseError} from '../../core/lib/lh-error.js';
@@ -46,23 +46,27 @@ async function getPageFromConnection(connection) {
 
   const pptrConnection = new PptrConnection(mainTargetInfo.url, transport);
 
-  const browser = await CDPBrowser._create(
+  const browser = await CdpBrowser._create(
     'chrome',
     pptrConnection,
     [] /* contextIds */,
-    false /* ignoreHTTPSErrors */,
-    undefined /* defaultViewport */,
-    undefined /* process */,
-    undefined /* closeCallback */,
-    // @ts-expect-error internal property
-    targetInfo => targetInfo._targetId === mainTargetInfo.targetId
+    false /* ignoreHTTPSErrors */
   );
 
-  const pages = await browser.pages();
-  const page = pages.find(p => p.mainFrame()._id === frameTree.frame.id);
-  if (!page) throw new Error('Could not find relevant puppeteer page');
-
-  // @ts-expect-error Page has a slightly different type when importing the browser module directly.
+  // We should be able to find the relevant page instantly, but just in case
+  // the relevant tab target comes a bit delayed, check every time a new
+  // target is seen.
+  const targetPromise = browser.waitForTarget(async (target) => {
+    const page = await target.page();
+    if (page && page.mainFrame()._id === frameTree.frame.id) return true;
+    return false;
+  });
+  const page = await Promise.race([
+    targetPromise.then(target => target.page()),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Could not find relevant puppeteer page')), 5000);
+    }),
+  ]);
   return page;
 }
 
@@ -73,11 +77,11 @@ async function getPageFromConnection(connection) {
  * @param {any} connection
  * @param {string} url
  * @param {LH.Flags} flags Lighthouse flags
- * @param {{lrDevice?: 'desktop'|'mobile', categoryIDs?: Array<string>, logAssets: boolean, configOverride?: LH.Config}} lrOpts Options coming from Lightrider
+ * @param {{lrDevice?: 'desktop'|'mobile', categoryIDs?: Array<string>, logAssets: boolean, configOverride?: LH.Config, ignoreStatusCode?: boolean}} lrOpts Options coming from Lightrider
  * @return {Promise<string>}
  */
 async function runLighthouseInLR(connection, url, flags, lrOpts) {
-  const {lrDevice, categoryIDs, logAssets, configOverride} = lrOpts;
+  const {lrDevice, categoryIDs, logAssets, configOverride, ignoreStatusCode} = lrOpts;
 
   // Certain fixes need to kick in under LR, see https://github.com/GoogleChrome/lighthouse/issues/5839
   global.isLightrider = true;
@@ -92,8 +96,9 @@ async function runLighthouseInLR(connection, url, flags, lrOpts) {
     config = configOverride;
   } else {
     config = lrDevice === 'desktop' ? LR_PRESETS.desktop : LR_PRESETS.mobile;
+    config.settings = config.settings || {};
+    config.settings.ignoreStatusCode = ignoreStatusCode;
     if (categoryIDs) {
-      config.settings = config.settings || {};
       config.settings.onlyCategories = categoryIDs;
     }
   }

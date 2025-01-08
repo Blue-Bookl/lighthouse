@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2021 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import log from 'lighthouse-logger';
@@ -72,31 +72,30 @@ async function startTimespanGather(page, options = {}) {
       const finalDisplayedUrl = await driver.url();
 
       const runnerOptions = {resolvedConfig, computedCache};
-      const artifacts = await Runner.gather(
-        async () => {
-          baseArtifacts.URL = {finalDisplayedUrl};
+      const gatherFn = async () => {
+        baseArtifacts.URL = {finalDisplayedUrl};
 
-          await collectPhaseArtifacts({phase: 'stopSensitiveInstrumentation', ...phaseOptions});
-          await collectPhaseArtifacts({phase: 'stopInstrumentation', ...phaseOptions});
+        await collectPhaseArtifacts({phase: 'stopSensitiveInstrumentation', ...phaseOptions});
+        await collectPhaseArtifacts({phase: 'stopInstrumentation', ...phaseOptions});
 
-          // bf-cache-failures can emit `Page.frameNavigated` at the end of the run.
-          // This can cause us to issue protocol commands after the target closes.
-          // We should disable our `Page.frameNavigated` handlers before that.
-          await disableAsyncStacks();
+        // bf-cache-failures can emit `Page.frameNavigated` at the end of the run.
+        // This can cause us to issue protocol commands after the target closes.
+        // We should disable our `Page.frameNavigated` handlers before that.
+        await disableAsyncStacks();
 
-          driver.defaultSession.off('Page.frameNavigated', onFrameNavigated);
-          if (pageNavigationDetected) {
-            baseArtifacts.LighthouseRunWarnings.push(str_(UIStrings.warningNavigationDetected));
-          }
+        driver.defaultSession.off('Page.frameNavigated', onFrameNavigated);
+        if (pageNavigationDetected) {
+          baseArtifacts.LighthouseRunWarnings.push(str_(UIStrings.warningNavigationDetected));
+        }
 
-          await collectPhaseArtifacts({phase: 'getArtifact', ...phaseOptions});
-          await driver.disconnect();
+        await collectPhaseArtifacts({phase: 'getArtifact', ...phaseOptions});
+        await driver.disconnect();
 
-          const artifacts = await awaitArtifacts(artifactState);
-          return finalizeArtifacts(baseArtifacts, artifacts);
-        },
-        runnerOptions
-      );
+        const artifacts = await awaitArtifacts(artifactState);
+        return finalizeArtifacts(baseArtifacts, artifacts);
+      };
+
+      const artifacts = await Runner.gather(gatherFn, runnerOptions);
       return {artifacts, runnerOptions};
     },
   };

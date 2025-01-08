@@ -1,11 +1,10 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {Audit} from './audit.js';
-import {ByteEfficiencyAudit} from './byte-efficiency/byte-efficiency-audit.js';
 import UrlUtils from '../lib/url-utils.js';
 import * as i18n from '../lib/i18n/i18n.js';
 import {NetworkRecords} from '../computed/network-records.js';
@@ -64,7 +63,7 @@ class UsesRelPreconnectAudit extends Audit {
       supportedModes: ['navigation'],
       guidanceLevel: 3,
       requiredArtifacts: ['traces', 'devtoolsLogs', 'URL', 'LinkElements'],
-      scoreDisplayMode: Audit.SCORING_MODES.NUMERIC,
+      scoreDisplayMode: Audit.SCORING_MODES.METRIC_SAVINGS,
     };
   }
 
@@ -147,14 +146,14 @@ class UsesRelPreconnectAudit extends Audit {
     /** @type {Set<string>} */
     const lcpGraphURLs = new Set();
     lcpGraph.traverse(node => {
-      if (node.type === 'network') lcpGraphURLs.add(node.record.url);
+      if (node.type === 'network') lcpGraphURLs.add(node.request.url);
     });
 
     const fcpGraph =
       await LanternFirstContentfulPaint.getPessimisticGraph(pageGraph, processedNavigation);
     const fcpGraphURLs = new Set();
     fcpGraph.traverse(node => {
-      if (node.type === 'network') fcpGraphURLs.add(node.record.url);
+      if (node.type === 'network') fcpGraphURLs.add(node.request.url);
     });
 
     /** @type {Map<string, LH.Artifacts.NetworkRequest[]>}  */
@@ -268,7 +267,7 @@ class UsesRelPreconnectAudit extends Audit {
       {overallSavingsMs: maxWastedLcp, sortedBy: ['wastedMs']});
 
     return {
-      score: ByteEfficiencyAudit.scoreForWastedMs(maxWastedLcp),
+      score: results.length ? 0 : 1,
       numericValue: maxWastedLcp,
       numericUnit: 'millisecond',
       displayValue: maxWastedLcp ?

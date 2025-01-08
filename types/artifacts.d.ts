@@ -1,13 +1,15 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {Protocol as Crdp} from 'devtools-protocol/types/protocol.js';
+import * as TraceEngine from '@paulirish/trace_engine';
+import * as Lantern from '../core/lib/lantern/lantern.js';
+import {LayoutShiftRootCausesData} from '@paulirish/trace_engine/models/trace/root-causes/LayoutShift.js';
 
 import {parseManifest} from '../core/lib/manifest-parser.js';
-import {Simulator} from '../core/lib/dependency-graph/simulator/simulator.js';
 import {LighthouseError} from '../core/lib/lh-error.js';
 import {NetworkRequest as _NetworkRequest} from '../core/lib/network-request.js';
 import speedline from 'speedline-core';
@@ -43,8 +45,6 @@ interface UniversalBaseArtifacts {
   LighthouseRunWarnings: Array<string | IcuMessage>;
   /** The benchmark index that indicates rough device class. */
   BenchmarkIndex: number;
-  /** Many benchmark indexes. Many. */
-  BenchmarkIndexes?: number[];
   /** An object containing information about the testing configuration used by Lighthouse. */
   settings: Config.Settings;
   /** The timing instrumentation of the gather portion of a run. */
@@ -53,6 +53,8 @@ interface UniversalBaseArtifacts {
   HostFormFactor: 'desktop'|'mobile';
   /** The user agent string of the version of Chrome used. */
   HostUserAgent: string;
+  /** The product string of the version of Chrome used. Example: HeadlessChrome/123.2.2.0 would be from old headless. */
+  HostProduct: string;
   /** Information about how Lighthouse artifacts were gathered. */
   GatherContext: {gatherMode: Gatherer.GatherMode};
 }
@@ -75,18 +77,20 @@ interface ContextualBaseArtifacts {
 interface PublicGathererArtifacts {
   /** ConsoleMessages deprecation and intervention warnings, console API calls, and exceptions logged by Chrome during page load. */
   ConsoleMessages: Artifacts.ConsoleMessage[];
-  /** All the iframe elements in the page. */
-  IFrameElements: Artifacts.IFrameElement[];
-  /** The contents of the main HTML document network resource. */
-  MainDocumentContent: string;
+  /** The primary log of devtools protocol activity. */
+  DevtoolsLog: DevtoolsLog;
   /** Information on size and loading for all the images in the page. Natural size information for `picture` and CSS images is only available if the image was one of the largest 50 images. */
   ImageElements: Artifacts.ImageElement[];
   /** All the link elements on the page or equivalently declared in `Link` headers. @see https://html.spec.whatwg.org/multipage/links.html */
   LinkElements: Artifacts.LinkElement[];
+  /** The contents of the main HTML document network resource. */
+  MainDocumentContent: string;
   /** The values of the <meta> elements in the head. */
   MetaElements: Array<{name?: string, content?: string, property?: string, httpEquiv?: string, charset?: string, node: Artifacts.NodeDetails}>;
-  /** Information on all script elements in the page. Also contains the content of all requested scripts and the networkRecord requestId that contained their content. Note, HTML documents will have one entry per script tag, all with the same requestId. */
-  ScriptElements: Array<Artifacts.ScriptElement>;
+  /** Information on all scripts in the page. */
+  Scripts: Artifacts.Script[];
+  /** The primary trace taken over the entire run. */
+  Trace: Trace;
   /** The dimensions and devicePixelRatio of the loaded viewport. */
   ViewportDimensions: Artifacts.ViewportDimensions;
 }
@@ -105,9 +109,7 @@ export interface GathererArtifacts extends PublicGathererArtifacts {
   /** Array of all URLs cached in CacheStorage. */
   CacheContents: string[];
   /** CSS coverage information for styles used by page's final state. */
-  CSSUsage: {rules: Crdp.CSS.RuleUsage[], stylesheets: Artifacts.CSSStyleSheetInfo[]};
-  /** The primary log of devtools protocol activity. */
-  DevtoolsLog: DevtoolsLog;
+  CSSUsage: Crdp.CSS.RuleUsage[];
   /** The log of devtools protocol activity if there was a page load error and Chrome navigated to a `chrome-error://` page. */
   DevtoolsLogError: DevtoolsLog;
   /** Information on the document's doctype(or null if not present), specifically the name, publicId, and systemId.
@@ -115,20 +117,16 @@ export interface GathererArtifacts extends PublicGathererArtifacts {
   Doctype: Artifacts.Doctype | null;
   /** Information on the size of all DOM nodes in the page and the most extreme members. */
   DOMStats: Artifacts.DOMStats;
-  /** Relevant attributes and child properties of all <object>s, <embed>s and <applet>s in the page. */
-  EmbeddedContent: Artifacts.EmbeddedContentInfo[];
   /** Information on poorly sized font usage and the text affected by it. */
   FontSize: Artifacts.FontSize;
+  /** All the iframe elements in the page. */
+  IFrameElements: Artifacts.IFrameElement[];
   /** All the input elements, including associated form and label elements. */
   Inputs: {inputs: Artifacts.InputElement[]; forms: Artifacts.FormElement[]; labels: Artifacts.LabelElement[]};
   /** Screenshot of the entire page (rather than just the above the fold content). */
   FullPageScreenshot: LHResult.FullPageScreenshot | null;
-  /** Information about event listeners registered on the global object. */
-  GlobalListeners: Array<Artifacts.GlobalListener>;
   /** The issues surfaced in the devtools Issues panel */
   InspectorIssues: Artifacts.InspectorIssues;
-  /** Errors preventing page being installable as PWA. */
-  InstallabilityErrors: Artifacts.InstallabilityErrors;
   /** JS coverage information for code used during audit. Keyed by script id. */
   // 'url' is excluded because it can be overridden by a magic sourceURL= comment, which makes keeping it a dangerous footgun!
   JsUsage: Record<string, Omit<Crdp.Profiler.ScriptCoverage, 'url'>>;
@@ -140,26 +138,18 @@ export interface GathererArtifacts extends PublicGathererArtifacts {
   ResponseCompression: {requestId: string, url: string, mimeType: string, transferSize: number, resourceSize: number, gzipSize?: number}[];
   /** Information on fetching and the content of the /robots.txt file. */
   RobotsTxt: {status: number|null, content: string|null, errorMessage?: string};
-  /** Information on all scripts in the page. */
-  Scripts: Artifacts.Script[];
-  /** Version information for all ServiceWorkers active after the first page load. */
-  ServiceWorker: {versions: Crdp.ServiceWorker.ServiceWorkerVersion[], registrations: Crdp.ServiceWorker.ServiceWorkerRegistration[]};
+  /** The result of calling the shared trace engine root cause analysis. */
+  RootCauses: Artifacts.TraceEngineRootCauses;
   /** Source maps of scripts executed in the page. */
   SourceMaps: Array<Artifacts.SourceMap>;
   /** Information on detected tech stacks (e.g. JS libraries) used by the page. */
   Stacks: Artifacts.DetectedStack[];
-  /** Information on <script> and <link> tags blocking first paint. */
-  TagsBlockingFirstPaint: Artifacts.TagBlockingFirstPaint[];
-  /** Information about tap targets including their position and size. */
-  TapTargets: Artifacts.TapTarget[];
-  /** The primary trace taken over the entire run. */
-  Trace: Trace;
+  /** CSS stylesheets found on the page. */
+  Stylesheets: Artifacts.CSSStyleSheetInfo[];
   /** The trace if there was a page load error and Chrome navigated to a `chrome-error://` page. */
   TraceError: Trace;
   /** Elements associated with metrics (ie: Largest Contentful Paint element). */
   TraceElements: Artifacts.TraceElement[];
-  /** Parsed version of the page's Web App Manifest, or null if none found. */
-  WebAppManifest: Artifacts.Manifest | null;
   /** COMPAT: A set of traces, keyed by passName. */
   traces: {[passName: string]: Trace};
   /** COMPAT: A set of DevTools debugger protocol records, keyed by passName. */
@@ -173,7 +163,7 @@ declare module Artifacts {
 
   type NetworkRequest = _NetworkRequest;
   type TaskNode = _TaskNode;
-  type TBTImpactTask = TaskNode & {tbtImpact: number, selfTbtImpact: number};
+  type TBTImpactTask = TaskNode & {tbtImpact: number, selfTbtImpact: number, selfBlockingTime: number};
   type MetaElement = Artifacts['MetaElements'][0];
 
   interface URL {
@@ -191,6 +181,8 @@ declare module Artifacts {
     finalDisplayedUrl: string;
   }
 
+  type Rect = AuditDetails.Rect;
+
   interface NodeDetails {
     lhId: string,
     devtoolsNodePath: string,
@@ -198,6 +190,7 @@ declare module Artifacts {
     boundingRect: Rect,
     snippet: string,
     nodeLabel: string,
+    explanation?: string,
   }
 
   interface RuleExecutionError {
@@ -210,7 +203,7 @@ declare module Artifacts {
     impact?: string;
     tags: Array<string>;
     nodes: Array<{
-      target: Array<string>;
+      target: Array<string|string[]>;
       failureSummary?: string;
       node: NodeDetails;
       relatedNodes: NodeDetails[];
@@ -243,16 +236,6 @@ declare module Artifacts {
     totalBodyElements: number;
     width: NodeDetails & {max: number;};
     depth: NodeDetails & {max: number;};
-  }
-
-  interface EmbeddedContentInfo {
-    tagName: string;
-    type: string | null;
-    src: string | null;
-    data: string | null;
-    code: string | null;
-    params: Array<{name: string; value: string}>;
-    node: Artifacts.NodeDetails;
   }
 
   interface IFrameElement {
@@ -304,19 +287,6 @@ declare module Artifacts {
     name: string;
     url: string;
     content?: string;
-  }
-
-  interface ScriptElement {
-    type: string | null
-    src: string | null
-    /** The `id` property of the script element; null if it had no `id` or if `source` is 'network'. */
-    id: string | null
-    async: boolean
-    defer: boolean
-    /** Details for node in DOM for the script element */
-    node: NodeDetails | null
-    /** Where the script was discovered, either in the head, the body, or network records. */
-    source: 'head'|'body'|'network'
   }
 
   /** @see https://sourcemaps.info/spec.html#h.qz3o9nc69um5 */
@@ -444,10 +414,6 @@ declare module Artifacts {
   // TODO(bckenny): real type for parsed manifest.
   type Manifest = ReturnType<typeof parseManifest>;
 
-  interface InstallabilityErrors {
-    errors: Crdp.Page.InstallabilityError[];
-  }
-
   interface ImageElement {
     /** The resolved source URL of the image. Similar to `currentSrc`, but resolved for CSS images as well. */
     src: string;
@@ -535,34 +501,21 @@ declare module Artifacts {
     resourceSize: number;
   }
 
-  interface TagBlockingFirstPaint {
-    startTime: number;
-    endTime: number;
-    transferSize: number;
-    tag: {
-      tagName: 'LINK'|'SCRIPT';
-      /** The value of `HTMLLinkElement.href` or `HTMLScriptElement.src`. */
-      url: string;
-      /** A record of when changes to the `HTMLLinkElement.media` attribute occurred and if the new media type matched the page. */
-      mediaChanges?: Array<{href: string, media: string, msSinceHTMLEnd: number, matches: boolean}>;
-    };
-  }
-
-  type Rect = AuditDetails.Rect;
-
-  interface TapTarget {
-    node: NodeDetails;
-    href: string;
-    clientRects: Rect[];
-  }
-
   interface TraceElement {
     traceEventType: 'largest-contentful-paint'|'layout-shift'|'animation'|'responsiveness';
-    score?: number;
     node: NodeDetails;
-    nodeId?: number;
+    nodeId: number;
     animations?: {name?: string, failureReasonsMask?: number, unsupportedProperties?: string[]}[];
     type?: string;
+  }
+
+  interface TraceEngineResult {
+    data: TraceEngine.Handlers.Types.ParsedTrace;
+    insights: TraceEngine.Insights.Types.TraceInsightSets;
+  }
+
+  interface TraceEngineRootCauses {
+    layoutShifts: Record<number, LayoutShiftRootCausesData>;
   }
 
   interface ViewportDimensions {
@@ -579,6 +532,7 @@ declare module Artifacts {
     bounceTrackingIssue: Crdp.Audits.BounceTrackingIssueDetails[];
     clientHintIssue: Crdp.Audits.ClientHintIssueDetails[];
     contentSecurityPolicyIssue: Crdp.Audits.ContentSecurityPolicyIssueDetails[];
+    cookieDeprecationMetadataIssue: Crdp.Audits.CookieDeprecationMetadataIssueDetails[],
     corsIssue: Crdp.Audits.CorsIssueDetails[];
     deprecationIssue: Crdp.Audits.DeprecationIssueDetails[];
     federatedAuthRequestIssue: Crdp.Audits.FederatedAuthRequestIssueDetails[],
@@ -587,9 +541,12 @@ declare module Artifacts {
     lowTextContrastIssue: Crdp.Audits.LowTextContrastIssueDetails[];
     mixedContentIssue: Crdp.Audits.MixedContentIssueDetails[];
     navigatorUserAgentIssue: Crdp.Audits.NavigatorUserAgentIssueDetails[];
+    propertyRuleIssue: Crdp.Audits.PropertyRuleIssueDetails[],
     quirksModeIssue: Crdp.Audits.QuirksModeIssueDetails[];
     cookieIssue: Crdp.Audits.CookieIssueDetails[];
+    selectElementAccessibilityIssue: Crdp.Audits.SelectElementAccessibilityIssueDetails[];
     sharedArrayBufferIssue: Crdp.Audits.SharedArrayBufferIssueDetails[];
+    sharedDictionaryIssue: Crdp.Audits.SharedDictionaryIssueDetails[];
     stylesheetLoadingIssue: Crdp.Audits.StylesheetLoadingIssueDetails[];
     federatedAuthUserInfoRequestIssue: Crdp.Audits.FederatedAuthUserInfoRequestIssueDetails[];
   }
@@ -602,25 +559,6 @@ declare module Artifacts {
     }
   }
 
-  type ManifestValueCheckID = 'hasStartUrl'|'hasIconsAtLeast144px'|'hasIconsAtLeast512px'|'fetchesIcon'|'hasPWADisplayValue'|'hasBackgroundColor'|'hasThemeColor'|'hasShortName'|'hasName'|'shortNameLength'|'hasMaskableIcon';
-
-  type ManifestValues = {
-    isParseFailure: false;
-    allChecks: {
-      id: ManifestValueCheckID;
-      failureText: string;
-      passing: boolean;
-    }[];
-  } | {
-    isParseFailure: true;
-    parseFailureReason: string;
-    allChecks: {
-      id: ManifestValueCheckID;
-      failureText: string;
-      passing: boolean;
-    }[];
-  }
-
   type MeasureEntry = LHResult.MeasureEntry;
 
   interface MetricComputationDataInput {
@@ -628,7 +566,7 @@ declare module Artifacts {
     trace: Trace;
     settings: Audit.Context['settings'];
     gatherContext: Artifacts['GatherContext'];
-    simulator?: InstanceType<typeof Simulator>;
+    simulator?: Gatherer.Simulation.Simulator;
     URL: Artifacts['URL'];
   }
 
@@ -654,14 +592,7 @@ declare module Artifacts {
     throughput: number;
   }
 
-  interface LanternMetric {
-    timing: number;
-    timestamp?: never;
-    optimisticEstimate: Gatherer.Simulation.Result
-    pessimisticEstimate: Gatherer.Simulation.Result;
-    optimisticGraph: Gatherer.Simulation.GraphNode;
-    pessimisticGraph: Gatherer.Simulation.GraphNode;
-  }
+  type LanternMetric = Lantern.Metrics.MetricResult<Artifacts.NetworkRequest>;
 
   type Speedline = speedline.Output<'speedIndex'>;
 
@@ -675,7 +606,6 @@ declare module Artifacts {
     firstPaint?: number;
     firstContentfulPaint: number;
     firstContentfulPaintAllFrames: number;
-    firstMeaningfulPaint?: number;
     largestContentfulPaint?: number;
     largestContentfulPaintAllFrames?: number;
     traceEnd: number;
@@ -719,8 +649,6 @@ declare module Artifacts {
     firstContentfulPaintEvt: TraceEvent;
     /** The trace event marking firstContentfulPaint from all frames, if it was found. */
     firstContentfulPaintAllFramesEvt: TraceEvent;
-    /** The trace event marking firstMeaningfulPaint, if it was found. */
-    firstMeaningfulPaintEvt?: TraceEvent;
     /** The trace event marking largestContentfulPaint, if it was found. */
     largestContentfulPaintEvt?: TraceEvent;
     /** The trace event marking largestContentfulPaint from all frames, if it was found. */
@@ -729,11 +657,6 @@ declare module Artifacts {
     loadEvt?: TraceEvent;
     /** The trace event marking domContentLoadedEventEnd, if it was found. */
     domContentLoadedEvt?: TraceEvent;
-    /**
-     * Whether the firstMeaningfulPaintEvt was the definitive event or a fallback to
-     * firstMeaningfulPaintCandidate events had to be attempted.
-     */
-    fmpFellBack: boolean;
     /** Whether LCP was invalidated without a new candidate. */
     lcpInvalidated: boolean;
   }
@@ -757,8 +680,6 @@ declare module Artifacts {
     firstContentfulPaintTs: number | undefined;
     firstContentfulPaintAllFrames: number | undefined;
     firstContentfulPaintAllFramesTs: number | undefined;
-    firstMeaningfulPaint: number | undefined;
-    firstMeaningfulPaintTs: number | undefined;
     largestContentfulPaint: number | undefined;
     largestContentfulPaintTs: number | undefined;
     largestContentfulPaintAllFrames: number | undefined;
@@ -787,8 +708,6 @@ declare module Artifacts {
     observedFirstContentfulPaintTs: number | undefined;
     observedFirstContentfulPaintAllFrames: number | undefined;
     observedFirstContentfulPaintAllFramesTs: number | undefined;
-    observedFirstMeaningfulPaint: number | undefined;
-    observedFirstMeaningfulPaintTs: number | undefined;
     observedLargestContentfulPaint: number | undefined;
     observedLargestContentfulPaintTs: number | undefined;
     observedLargestContentfulPaintAllFrames: number | undefined;
@@ -837,18 +756,6 @@ declare module Artifacts {
   interface LabelElement {
     for: string;
     node: NodeDetails;
-  }
-
-  /** Information about an event listener registered on the global object. */
-  interface GlobalListener {
-    /** Event listener type, limited to those events currently of interest. */
-    type: 'pagehide'|'unload'|'visibilitychange';
-    /** The DevTools protocol script identifier. */
-    scriptId: string;
-    /** Line number in the script (0-based). */
-    lineNumber: number;
-    /** Column number in the script (0-based). */
-    columnNumber: number;
   }
 
   /** Describes a generic console message. */
@@ -1014,6 +921,24 @@ export interface TraceEvent {
       type?: string;
       functionName?: string;
       name?: string;
+      duration?: number;
+      blockingDuration?: number;
+      candidateIndex?: number;
+      priority?: string;
+      requestMethod?: string;
+      resourceType?: string;
+      fromCache?: boolean;
+      fromServiceWorker?: boolean;
+      mimeType?: string;
+      statusCode?: number;
+      timing?: any;
+      connectionId?: number;
+      connectionReused?: boolean;
+      encodedDataLength?: number;
+      decodedBodyLength?: number;
+      initiator?: {type: string, url?: string, stack?: any};
+      protocol?: string;
+      finishTime?: number;
     };
     frame?: string;
     name?: string;

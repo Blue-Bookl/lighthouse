@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2019 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2019 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -18,9 +18,11 @@ import {once} from 'events';
 
 import puppeteer from 'puppeteer-core';
 import * as ChromeLauncher from 'chrome-launcher';
+import thirdPartyWebLib from 'third-party-web/nostats-subset.js';
 
-import {LH_ROOT} from '../../../../root.js';
+import {LH_ROOT} from '../../../../shared/root.js';
 import {loadArtifacts, saveArtifacts} from '../../../../core/lib/asset-saver.js';
+import {LocalConsole} from '../lib/local-console.js';
 
 // This runs only in the worker. The rest runs on the main thread.
 if (!isMainThread && parentPort) {
@@ -46,7 +48,7 @@ if (!isMainThread && parentPort) {
 /**
  * @param {string} url
  * @param {LH.Config|undefined} config
- * @param {{isDebug?: boolean}} testRunnerOptions
+ * @param {Smokehouse.SmokehouseOptions['testRunnerOptions']} testRunnerOptions
  * @return {Promise<{lhr: LH.Result, artifacts: LH.Artifacts}>}
  */
 async function runBundledLighthouse(url, config, testRunnerOptions) {
@@ -73,13 +75,22 @@ async function runBundledLighthouse(url, config, testRunnerOptions) {
   // @ts-expect-error - not worth giving test global an actual type.
   const lighthouse = global.runBundledLighthouse;
 
+  /** @type {import('../../../../core/lib/third-party-web.js')['default']} */
+  // @ts-expect-error
+  const thirdPartyWeb = global.thirdPartyWeb;
+  thirdPartyWeb.provideThirdPartyWeb(thirdPartyWebLib);
+
   // Launch and connect to Chrome.
-  const launchedChrome = await ChromeLauncher.launch();
+  const launchedChrome = await ChromeLauncher.launch({
+    chromeFlags: [
+      testRunnerOptions?.headless ? '--headless=new' : '',
+    ],
+  });
   const port = launchedChrome.port;
 
   // Run Lighthouse.
   try {
-    const logLevel = testRunnerOptions.isDebug ? 'verbose' : 'info';
+    const logLevel = testRunnerOptions?.isDebug ? 'verbose' : 'info';
 
     // Puppeteer is not included in the bundle, we must create the page here.
     const browser = await puppeteer.connect({browserURL: `http://127.0.0.1:${port}`});
@@ -93,7 +104,7 @@ async function runBundledLighthouse(url, config, testRunnerOptions) {
     };
   } finally {
     // Clean up and return results.
-    await launchedChrome.kill();
+    launchedChrome.kill();
   }
 }
 
@@ -101,12 +112,13 @@ async function runBundledLighthouse(url, config, testRunnerOptions) {
  * Launch Chrome and do a full Lighthouse run via the Lighthouse DevTools bundle.
  * @param {string} url
  * @param {LH.Config=} config
- * @param {{isDebug?: boolean}=} testRunnerOptions
- * @return {Promise<{lhr: LH.Result, artifacts: LH.Artifacts, log: string}>}
+ * @param {LocalConsole=} logger
+ * @param {Smokehouse.SmokehouseOptions['testRunnerOptions']=} testRunnerOptions
+ * @return {Promise<{lhr: LH.Result, artifacts: LH.Artifacts}>}
  */
-async function runLighthouse(url, config, testRunnerOptions = {}) {
-  /** @type {string[]} */
-  const logs = [];
+async function runLighthouse(url, config, logger, testRunnerOptions = {}) {
+  logger = logger || new LocalConsole();
+
   const worker = new Worker(new URL(import.meta.url), {
     stdout: true,
     stderr: true,
@@ -115,16 +127,16 @@ async function runLighthouse(url, config, testRunnerOptions = {}) {
   worker.stdout.setEncoding('utf8');
   worker.stderr.setEncoding('utf8');
   worker.stdout.addListener('data', (data) => {
-    logs.push(`[STDOUT] ${data}`);
+    logger.log(`[STDOUT] ${data}`);
   });
   worker.stderr.addListener('data', (data) => {
-    logs.push(`[STDERR] ${data}`);
+    logger.log(`[STDERR] ${data}`);
   });
   const [workerResponse] = await once(worker, 'message');
-  const log = logs.join('') + '\n';
 
   if (workerResponse.type === 'error') {
-    throw new Error(`Worker returned an error: ${workerResponse.value}\nLog:\n${log}`);
+    const log = logger.getLog();
+    throw new Error(`Worker returned an error: ${workerResponse.value}\nLog:\n${log}\n`);
   }
 
   const result = workerResponse.value;
@@ -138,7 +150,6 @@ async function runLighthouse(url, config, testRunnerOptions = {}) {
   return {
     lhr: result.lhr,
     artifacts,
-    log,
   };
 }
 

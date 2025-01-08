@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
- * Copyright 2016 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2016 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
 -->
 
 <html>
@@ -36,9 +36,17 @@
     <section>
       <div id="aria-command-name" role="button"></div>
     </section>
+    <p>aria-conditional-attr</p>
+    <section>
+      <input id="aria-conditional-attr" type="checkbox" aria-checked="true">
+    </section>
     <p>aria-dialog-name</p>
     <section>
       <div role="alertdialog" id="aria-dialog-name" aria-label=""></div>
+    </section>
+    <p>aria-deprecated-role</p>
+    <section>
+      <div role="directory" id="aria-deprecated-role"></div>
     </section>
     <p>aria-hidden-focus</p>
     <section>
@@ -67,6 +75,10 @@
     <p>aria-progressbar-name</p>
     <section>
       <div id="aria-progressbar-name" role="progressbar">text-in-a-box</div>
+    </section>
+    <p>aria-prohibited-attr</p>
+    <section>
+      <div id="aria-prohibited-attr" role="presentation" aria-label="Label"></div>
     </section>
     <p>aria-required-attr</p>
     <section>
@@ -141,11 +153,6 @@
       <div id="dlitem">
         <dd></dd>
       </div>
-    </section>
-    <p>duplicate-id-active</p>
-    <section>
-      <textarea id="duplicate-id-active" aria-label="text1"></textarea>
-      <textarea id="duplicate-id-active" aria-label="text2"></textarea>
     </section>
     <p>duplicate-id-aria</p>
     <section>

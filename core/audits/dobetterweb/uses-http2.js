@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2016 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2016 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -9,18 +9,12 @@
  * origin are over the http/2 protocol.
  */
 
-/** @typedef {import('../../lib/dependency-graph/simulator/simulator').Simulator} Simulator */
-/** @typedef {import('../../lib/dependency-graph/base-node.js').Node} Node */
-
 import {Audit} from '../audit.js';
 import {EntityClassification} from '../../computed/entity-classification.js';
 import UrlUtils from '../../lib/url-utils.js';
-import {ByteEfficiencyAudit} from '../byte-efficiency/byte-efficiency-audit.js';
-import {LanternInteractive} from '../../computed/metrics/lantern-interactive.js';
 import {NetworkRequest} from '../../lib/network-request.js';
 import {NetworkRecords} from '../../computed/network-records.js';
 import {LoadSimulator} from '../../computed/load-simulator.js';
-import {PageDependencyGraph} from '../../computed/page-dependency-graph.js';
 import {LanternLargestContentfulPaint} from '../../computed/metrics/lantern-largest-contentful-paint.js';
 import {LanternFirstContentfulPaint} from '../../computed/metrics/lantern-first-contentful-paint.js';
 import * as i18n from '../../lib/i18n/i18n.js';
@@ -61,7 +55,7 @@ class UsesHTTP2Audit extends Audit {
       id: 'uses-http2',
       title: str_(UIStrings.title),
       description: str_(UIStrings.description),
-      scoreDisplayMode: Audit.SCORING_MODES.NUMERIC,
+      scoreDisplayMode: Audit.SCORING_MODES.METRIC_SAVINGS,
       guidanceLevel: 3,
       supportedModes: ['timespan', 'navigation'],
       requiredArtifacts: ['URL', 'devtoolsLogs', 'traces', 'GatherContext'],
@@ -72,8 +66,8 @@ class UsesHTTP2Audit extends Audit {
    * Computes the estimated effect of all results being converted to http/2 on the provided graph.
    *
    * @param {Array<{url: string}>} results
-   * @param {Node} graph
-   * @param {Simulator} simulator
+   * @param {LH.Gatherer.Simulation.GraphNode} graph
+   * @param {LH.Gatherer.Simulation.Simulator} simulator
    * @param {{label?: string}=} options
    * @return {{savings: number, simulationBefore: LH.Gatherer.Simulation.Result, simulationAfter: LH.Gatherer.Simulation.Result}}
    */
@@ -81,31 +75,29 @@ class UsesHTTP2Audit extends Audit {
     options = Object.assign({label: ''}, options);
     const beforeLabel = `${this.meta.id}-${options.label}-before`;
     const afterLabel = `${this.meta.id}-${options.label}-after`;
-    const flexibleOrdering = true;
 
     const urlsToChange = new Set(results.map(result => result.url));
-    const simulationBefore =
-      simulator.simulate(graph, {label: beforeLabel, flexibleOrdering});
+    const simulationBefore = simulator.simulate(graph, {label: beforeLabel});
 
     // Update all the protocols to reflect implementing our recommendations
     /** @type {Map<string, string>} */
     const originalProtocols = new Map();
     graph.traverse(node => {
       if (node.type !== 'network') return;
-      if (!urlsToChange.has(node.record.url)) return;
+      if (!urlsToChange.has(node.request.url)) return;
 
-      originalProtocols.set(node.record.requestId, node.record.protocol);
-      node.record.protocol = 'h2';
+      originalProtocols.set(node.request.requestId, node.request.protocol);
+      node.request.protocol = 'h2';
     });
 
-    const simulationAfter = simulator.simulate(graph, {label: afterLabel, flexibleOrdering});
+    const simulationAfter = simulator.simulate(graph, {label: afterLabel});
 
     // Restore the original protocol after we've done our simulation
     graph.traverse(node => {
       if (node.type !== 'network') return;
-      const originalProtocol = originalProtocols.get(node.record.requestId);
+      const originalProtocol = originalProtocols.get(node.request.requestId);
       if (originalProtocol === undefined) return;
-      node.record.protocol = originalProtocol;
+      node.request.protocol = originalProtocol;
     });
 
     const savings = simulationBefore.timeInMs - simulationAfter.timeInMs;
@@ -119,32 +111,6 @@ class UsesHTTP2Audit extends Audit {
   }
 
   /**
-   * Computes the estimated effect all results being converted to use http/2, the max of:
-   *
-   * - end time of the last long task in the provided graph
-   * - end time of the last node in the graph
-   * @param {Array<{url: string}>} results
-   * @param {Node} graph
-   * @param {Simulator} simulator
-   * @return {number}
-   */
-  static computeWasteWithTTIGraph(results, graph, simulator) {
-    const {savings: savingsOnOverallLoad, simulationBefore, simulationAfter} =
-      this.computeWasteWithGraph(results, graph, simulator, {
-        label: 'tti',
-      });
-
-    const savingsOnTTI =
-      LanternInteractive.getLastLongTaskEndTime(simulationBefore.nodeTimings) -
-      LanternInteractive.getLastLongTaskEndTime(simulationAfter.nodeTimings);
-
-    const savings = Math.max(savingsOnTTI, savingsOnOverallLoad);
-
-    // Round waste to nearest 10ms
-    return Math.round(Math.max(savings, 0) / 10) * 10;
-  }
-
-  /**
    * Determines whether a network request is a "static resource" that would benefit from H2 multiplexing.
    * XHRs, tracking pixels, etc generally don't benefit as much because they aren't requested en-masse
    * for the same origin at the exact same time.
@@ -153,16 +119,19 @@ class UsesHTTP2Audit extends Audit {
    * @param {LH.Artifacts.EntityClassification} classifiedEntities
    * @return {boolean}
    */
-  static isStaticAsset(networkRequest, classifiedEntities) {
+  static isMultiplexableStaticAsset(networkRequest, classifiedEntities) {
     if (!STATIC_RESOURCE_TYPES.has(networkRequest.resourceType)) return false;
 
     // Resources from third-parties that are less than 100 bytes are usually tracking pixels, not actual resources.
     // They can masquerade as static types though (gifs, documents, etc)
     if (networkRequest.resourceSize < 100) {
-      // This logic needs to be revisited.
-      // See https://github.com/GoogleChrome/lighthouse/issues/14661
       const entity = classifiedEntities.entityByUrl.get(networkRequest.url);
-      if (entity && !entity.isUnrecognized) return false;
+      if (entity) {
+        // Third-party assets are multiplexable in their first-party context.
+        if (classifiedEntities.firstParty?.name === entity.name) return true;
+        // Skip recognizable third-parties' requests.
+        if (!entity.isUnrecognized) return false;
+      }
     }
 
     return true;
@@ -200,7 +169,7 @@ class UsesHTTP2Audit extends Audit {
     /** @type {Map<string, Array<LH.Artifacts.NetworkRequest>>} */
     const groupedByOrigin = new Map();
     for (const record of networkRecords) {
-      if (!UsesHTTP2Audit.isStaticAsset(record, classifiedEntities)) continue;
+      if (!UsesHTTP2Audit.isMultiplexableStaticAsset(record, classifiedEntities)) continue;
       if (UrlUtils.isLikeLocalhost(record.parsedURL.host)) continue;
       const existing = groupedByOrigin.get(record.parsedURL.securityOrigin) || [];
       existing.push(record);
@@ -233,7 +202,6 @@ class UsesHTTP2Audit extends Audit {
    * @return {Promise<LH.Audit.Product>}
    */
   static async audit(artifacts, context) {
-    const trace = artifacts.traces[Audit.DEFAULT_PASS];
     const devtoolsLog = artifacts.devtoolsLogs[Audit.DEFAULT_PASS];
     const URL = artifacts.URL;
     const networkRecords = await NetworkRecords.request(devtoolsLog, context);
@@ -267,7 +235,6 @@ class UsesHTTP2Audit extends Audit {
       devtoolsLog,
       settings,
     };
-    const pageGraph = await PageDependencyGraph.request({trace, devtoolsLog, URL}, context);
     const simulator = await LoadSimulator.request(simulatorOptions, context);
     const metricComputationInput = Audit.makeMetricComputationDataInput(artifacts, context);
 
@@ -278,8 +245,6 @@ class UsesHTTP2Audit extends Audit {
       pessimisticGraph: lcpGraph,
     } = await LanternLargestContentfulPaint.request(metricComputationInput, context);
 
-    const wastedMsTti = UsesHTTP2Audit.computeWasteWithTTIGraph(
-      resources, pageGraph, simulator);
     const wasteFcp =
       UsesHTTP2Audit.computeWasteWithGraph(resources,
         fcpGraph, simulator, {label: 'fcp'});
@@ -294,13 +259,13 @@ class UsesHTTP2Audit extends Audit {
     ];
 
     const details = Audit.makeOpportunityDetails(headings, resources,
-      {overallSavingsMs: wastedMsTti});
+      {overallSavingsMs: wasteLcp.savings});
 
     return {
       displayValue,
-      numericValue: wastedMsTti,
+      numericValue: wasteLcp.savings,
       numericUnit: 'millisecond',
-      score: ByteEfficiencyAudit.scoreForWastedMs(wastedMsTti),
+      score: resources.length ? 0 : 1,
       details,
       metricSavings: {LCP: wasteLcp.savings, FCP: wasteFcp.savings},
     };

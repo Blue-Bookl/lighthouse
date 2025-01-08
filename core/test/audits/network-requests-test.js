@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import NetworkRequests from '../../audits/network-requests.js';
@@ -99,7 +99,7 @@ describe('Network requests audit', () => {
 
   it('should report if records are from the main frame', async () => {
     const records = [
-      {url: 'https://example.com/'},
+      {url: 'https://example.com/', frameId: 'main'},
       {url: 'https://iframed.local/', frameId: '71D866EC199B90A2E0B2D9CF88DCBC4E'},
     ];
 
@@ -123,7 +123,7 @@ describe('Network requests audit', () => {
 
   it('should not include main frame information outside of navigations', async () => {
     const records = [
-      {url: 'https://example.com/'},
+      {url: 'https://example.com/', frameId: 'main'},
       {url: 'https://iframed.local/', frameId: '71D866EC199B90A2E0B2D9CF88DCBC4E'},
     ];
 
