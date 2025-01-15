@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2021 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {Audit} from '../audits/audit.js';
@@ -66,43 +66,6 @@ function assertValidArtifact(artifactDefn) {
   ) {
     throw new Error(`Gatherer for ${artifactDefn.id} did not define a "getArtifact" method.`);
   }
-}
-
-/**
- * Throws an error if the provided object does not implement the required navigations interface.
- * @param {LH.Config.ResolvedConfig['navigations']} navigationsDefn
- * @return {{warnings: string[]}}
- */
-function assertValidNavigations(navigationsDefn) {
-  if (!navigationsDefn || !navigationsDefn.length) return {warnings: []};
-
-  /** @type {string[]} */
-  const warnings = [];
-
-  // Assert that the first navigation has loadFailureMode fatal.
-  const firstNavigation = navigationsDefn[0];
-  if (firstNavigation.loadFailureMode !== 'fatal') {
-    const currentMode = firstNavigation.loadFailureMode;
-    const warning = [
-      `"${firstNavigation.id}" is the first navigation but had a failure mode of ${currentMode}.`,
-      `The first navigation will always be treated as loadFailureMode=fatal.`,
-    ].join(' ');
-
-    warnings.push(warning);
-    firstNavigation.loadFailureMode = 'fatal';
-  }
-
-  // Assert that navigations have unique IDs.
-  const navigationIds = navigationsDefn.map(navigation => navigation.id);
-  const duplicateId = navigationIds.find(
-    (id, i) => navigationIds.slice(i + 1).some(other => id === other)
-  );
-
-  if (duplicateId) {
-    throw new Error(`Navigation must have unique identifiers, but "${duplicateId}" was repeated.`);
-  }
-
-  return {warnings};
 }
 
 /**
@@ -223,42 +186,36 @@ function assertValidSettings(settings) {
 }
 
 /**
- * Asserts that artifacts are in a valid dependency order that can be computed.
+ * Asserts that artifacts are unique, valid and are in a dependency order that can be computed.
  *
- * @param {Array<LH.Config.NavigationDefn>} navigations
+ * @param {Array<LH.Config.AnyArtifactDefn>} artifactDefns
  */
-function assertArtifactTopologicalOrder(navigations) {
+function assertValidArtifacts(artifactDefns) {
+  /** @type {Set<string>} */
   const availableArtifacts = new Set();
 
-  for (const navigation of navigations) {
-    for (const artifact of navigation.artifacts) {
-      availableArtifacts.add(artifact.id);
-      if (!artifact.dependencies) continue;
+  for (const artifact of artifactDefns) {
+    assertValidArtifact(artifact);
 
-      for (const [dependencyKey, {id: dependencyId}] of Object.entries(artifact.dependencies)) {
-        if (availableArtifacts.has(dependencyId)) continue;
-        throwInvalidDependencyOrder(artifact.id, dependencyKey);
-      }
+    if (availableArtifacts.has(artifact.id)) {
+      throw new Error(`Config defined multiple artifacts with id '${artifact.id}'`);
+    }
+
+    availableArtifacts.add(artifact.id);
+    if (!artifact.dependencies) continue;
+
+    for (const [dependencyKey, {id: dependencyId}] of Object.entries(artifact.dependencies)) {
+      if (availableArtifacts.has(dependencyId)) continue;
+      throwInvalidDependencyOrder(artifact.id, dependencyKey);
     }
   }
 }
 
 /**
  * @param {LH.Config.ResolvedConfig} resolvedConfig
- * @return {{warnings: string[]}}
  */
 function assertValidConfig(resolvedConfig) {
-  const {warnings} = assertValidNavigations(resolvedConfig.navigations);
-
-  /** @type {Set<string>} */
-  const artifactIds = new Set();
-  for (const artifactDefn of resolvedConfig.artifacts || []) {
-    if (artifactIds.has(artifactDefn.id)) {
-      throw new Error(`Config defined multiple artifacts with id '${artifactDefn.id}'`);
-    }
-    artifactIds.add(artifactDefn.id);
-    assertValidArtifact(artifactDefn);
-  }
+  assertValidArtifacts(resolvedConfig.artifacts || []);
 
   for (const auditDefn of resolvedConfig.audits || []) {
     assertValidAudit(auditDefn);
@@ -266,7 +223,6 @@ function assertValidConfig(resolvedConfig) {
 
   assertValidCategories(resolvedConfig.categories, resolvedConfig.audits, resolvedConfig.groups);
   assertValidSettings(resolvedConfig.settings);
-  return {warnings};
 }
 
 /**
@@ -303,11 +259,10 @@ export {
   isValidArtifactDependency,
   assertValidPluginName,
   assertValidArtifact,
-  assertValidNavigations,
   assertValidAudit,
   assertValidCategories,
   assertValidSettings,
-  assertArtifactTopologicalOrder,
+  assertValidArtifacts,
   assertValidConfig,
   throwInvalidDependencyOrder,
   throwInvalidArtifactDependency,

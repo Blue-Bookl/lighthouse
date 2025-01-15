@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * @license Copyright 2019 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2019 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -16,14 +16,14 @@ import path from 'path';
 import fs from 'fs';
 import url from 'url';
 
-import cloneDeep from 'lodash/cloneDeep.js';
+import {cloneDeep} from 'lodash-es';
 import yargs from 'yargs';
 import * as yargsHelpers from 'yargs/helpers';
 import log from 'lighthouse-logger';
 
-import {runSmokehouse, getShardedDefinitions} from '../smokehouse.js';
+import {runSmokehouse, getShardedDefinitions, DEFAULT_RETRIES, DEFAULT_CONCURRENT_RUNS} from '../smokehouse.js';
 import {updateTestDefnFormat} from './back-compat-util.js';
-import {LH_ROOT} from '../../../../root.js';
+import {LH_ROOT} from '../../../../shared/root.js';
 import exclusions from '../config/exclusions.js';
 import {saveArtifacts} from '../../../../core/lib/asset-saver.js';
 import {saveLhr} from '../../../../core/lib/asset-saver.js';
@@ -59,7 +59,7 @@ function getDefinitionsToRun(allTestDefns, requestedIds, excludedTests) {
   } else {
     smokes = allTestDefns.filter(test => {
       // Include all tests that *include* requested id.
-      // e.g. a requested 'pwa' will match 'pwa-airhorner', 'pwa-caltrain', etc
+      // e.g. a requested 'perf' will match 'perf-preload', 'perf-trace-elements', etc
       return requestedIds.some(requestedId => test.id.includes(requestedId));
     });
     console.log(`Running ONLY smoketests for: ${smokes.map(t => t.id).join(' ')}\n`);
@@ -125,7 +125,7 @@ async function begin() {
   const rawArgv = y
     .help('help')
     .usage('node $0 [<options>] <test-ids>')
-    .example('node $0 -j=1 pwa seo', 'run pwa and seo tests serially')
+    .example('node $0 -j=1 perf seo', 'run perf and seo tests serially')
     .option('_', {
       array: true,
       type: 'string',
@@ -139,10 +139,12 @@ async function begin() {
       'jobs': {
         type: 'number',
         alias: 'j',
+        default: DEFAULT_CONCURRENT_RUNS,
         describe: 'Manually set the number of jobs to run at once. `1` runs all tests serially',
       },
       'retries': {
         type: 'number',
+        default: DEFAULT_RETRIES,
         describe: 'The number of times to retry failing tests before accepting. Defaults to 0',
       },
       'runner': {
@@ -164,6 +166,15 @@ async function begin() {
         default: false,
         describe: 'Ignore any smoke test exclusions set.',
       },
+      'headless': {
+        type: 'boolean',
+        default: true,
+        hidden: true,
+      },
+      'no-headless': {
+        type: 'boolean',
+        describe: 'Launch Chrome in typical desktop headful mode, rather than our default of `--headless=new` (https://developer.chrome.com/articles/new-headless/).', // eslint-disable-line max-len
+      },
     })
     .wrap(y.terminalWidth())
     .argv;
@@ -172,9 +183,6 @@ async function begin() {
   // so for now cast to add yarg's camelCase properties to type.
   const argv =
     /** @type {Awaited<typeof rawArgv> & LH.Util.CamelCasify<Awaited<typeof rawArgv>>} */ (rawArgv);
-
-  const jobs = Number.isFinite(argv.jobs) ? argv.jobs : undefined;
-  const retries = Number.isFinite(argv.retries) ? argv.retries : undefined;
 
   const runnerPath = runnerPaths[/** @type {keyof typeof runnerPaths} */ (argv.runner)];
   if (argv.runner === 'bundle') {
@@ -210,9 +218,12 @@ async function begin() {
 
     const prunedTestDefns = pruneExpectedNetworkRequests(testDefns, takeNetworkRequestUrls);
     const options = {
-      jobs,
-      retries,
-      isDebug: argv.debug,
+      jobs: argv.jobs,
+      retries: argv.retries,
+      testRunnerOptions: {
+        isDebug: argv.debug,
+        headless: argv.headless,
+      },
       lighthouseRunner: runLighthouse,
       takeNetworkRequestUrls,
       setup,

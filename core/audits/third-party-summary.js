@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2019 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2019 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {Audit} from './audit.js';
@@ -55,15 +55,6 @@ const PASS_THRESHOLD_IN_MS = 250;
  * @property {Map<LH.Artifacts.Entity, string[]>} urls Map of URLs under each entity.
  */
 
-/**
- * Don't bother showing resources smaller than 4KiB since they're likely to be pixels, which isn't
- * too actionable.
- */
-const MIN_TRANSFER_SIZE_FOR_SUBITEMS = 4096;
-
-/** Show at most 5 sub items in the resource breakdown. */
-const MAX_SUBITEMS = 5;
-
 class ThirdPartySummary extends Audit {
   /**
    * @return {LH.Audit.Meta}
@@ -75,6 +66,7 @@ class ThirdPartySummary extends Audit {
       failureTitle: str_(UIStrings.failureTitle),
       description: str_(UIStrings.description),
       guidanceLevel: 1,
+      scoreDisplayMode: Audit.SCORING_MODES.METRIC_SAVINGS,
       requiredArtifacts: ['traces', 'devtoolsLogs', 'URL', 'GatherContext'],
     };
   }
@@ -109,10 +101,13 @@ class ThirdPartySummary extends Audit {
       const taskDuration = task.selfTime * cpuMultiplier;
       // The amount of time spent on main thread is the sum of all durations.
       urlSummary.mainThreadTime += taskDuration;
-      // The amount of time spent *blocking* on main thread is the sum of all time longer than 50ms.
-      // Note that this is not totally equivalent to the TBT definition since it fails to account for FCP,
-      // but a majority of third-party work occurs after FCP and should yield largely similar numbers.
-      urlSummary.blockingTime += Math.max(taskDuration - 50, 0);
+      // Blocking time is the amount of time spent on the main thread *over* 50ms.
+      // This value is interpolated because not all tasks attributed to this URL are at the top level.
+      //
+      // Note that this is not totally equivalent to the TBT definition since it fails to account for
+      // the FCP&TTI bounds of TBT.
+      urlSummary.blockingTime += task.selfBlockingTime;
+      // TBT impact is similar to blocking time, but it accounts for the FCP&TTI bounds of TBT.
       urlSummary.tbtImpact += task.selfTbtImpact;
       byURL.set(attributableURL, urlSummary);
     }
@@ -145,51 +140,15 @@ class ThirdPartySummary extends Audit {
   /**
    * @param {LH.Artifacts.Entity} entity
    * @param {SummaryMaps} summaries
-   * @param {Summary} stats
    * @return {Array<URLSummary>}
    */
-  static makeSubItems(entity, summaries, stats) {
+  static makeSubItems(entity, summaries) {
     const entityURLs = summaries.urls.get(entity) || [];
-    let items = entityURLs
+    const items = entityURLs
       .map(url => /** @type {URLSummary} */ ({url, ...summaries.byURL.get(url)}))
-      // Filter out any cases where byURL was missing entries.
-      .filter((stat) => stat.transferSize > 0)
       // Sort by blocking time first, then transfer size to break ties.
       .sort((a, b) => (b.blockingTime - a.blockingTime) || (b.transferSize - a.transferSize));
 
-    const subitemSummary = {transferSize: 0, blockingTime: 0, tbtImpact: 0};
-    const minTransferSize = Math.max(MIN_TRANSFER_SIZE_FOR_SUBITEMS, stats.transferSize / 20);
-    const maxSubItems = Math.min(MAX_SUBITEMS, items.length);
-    let numSubItems = 0;
-    while (numSubItems < maxSubItems) {
-      const nextSubItem = items[numSubItems];
-      if (nextSubItem.blockingTime === 0 && nextSubItem.transferSize < minTransferSize) {
-        // Don't include the resource in the sub-item breakdown because it didn't have a big
-        // enough impact on its own.
-        break;
-      }
-
-      numSubItems++;
-      subitemSummary.transferSize += nextSubItem.transferSize;
-      subitemSummary.blockingTime += nextSubItem.blockingTime;
-      subitemSummary.tbtImpact += nextSubItem.tbtImpact;
-    }
-    if (!subitemSummary.blockingTime && !subitemSummary.transferSize) {
-      // Don't bother breaking down if there are no large resources.
-      return [];
-    }
-    // Only show the top N entries for brevity. If there is more than one remaining entry
-    // we'll replace the tail entries with single remainder entry.
-    items = items.slice(0, numSubItems);
-    const remainder = {
-      url: str_(i18n.UIStrings.otherResourcesLabel),
-      transferSize: stats.transferSize - subitemSummary.transferSize,
-      blockingTime: stats.blockingTime - subitemSummary.blockingTime,
-      tbtImpact: stats.tbtImpact - subitemSummary.tbtImpact,
-    };
-    if (remainder.transferSize > minTransferSize) {
-      items.push(remainder);
-    }
     return items;
   }
 
@@ -230,7 +189,7 @@ class ThirdPartySummary extends Audit {
           entity: entity.name,
           subItems: {
             type: /** @type {const} */ ('subitems'),
-            items: ThirdPartySummary.makeSubItems(entity, summaries, stats),
+            items: ThirdPartySummary.makeSubItems(entity, summaries),
           },
         };
       })
@@ -257,14 +216,17 @@ class ThirdPartySummary extends Audit {
     const details = Audit.makeTableDetails(headings, results,
       {...overallSummary, isEntityGrouped: true});
 
+    const passed = overallSummary.wastedMs <= PASS_THRESHOLD_IN_MS;
+
     return {
-      score: Number(overallSummary.wastedMs <= PASS_THRESHOLD_IN_MS),
+      score: Number(passed),
+      scoreDisplayMode: passed ? Audit.SCORING_MODES.INFORMATIVE : undefined,
       displayValue: str_(UIStrings.displayValue, {
         timeInMs: overallSummary.wastedMs,
       }),
       details,
       metricSavings: {
-        TBT: overallSummary.tbtImpact,
+        TBT: Math.round(overallSummary.tbtImpact),
       },
     };
   }

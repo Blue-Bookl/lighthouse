@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2017 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert/strict';
@@ -51,6 +51,7 @@ describe('Performance: uses-rel-preload audit', () => {
       {
         requestId: '2',
         networkRequestTime: 10_000,
+        transferSize: 1000,
         isLinkPreload: false,
         url: secondRecordUrl,
         timing: defaultMainResource.timing,
@@ -63,6 +64,7 @@ describe('Performance: uses-rel-preload audit', () => {
         // Normally this request would be flagged for preloading.
         requestId: '3',
         networkRequestTime: 20_000,
+        transferSize: 1000,
         isLinkPreload: false,
         url: 'http://www.example.com/a-different-script.js',
         timing: defaultMainResource.timing,
@@ -100,6 +102,7 @@ describe('Performance: uses-rel-preload audit', () => {
         isLinkPreload: false,
         networkRequestTime: 500,
         networkEndTime: 1000,
+        transferSize: 1000,
         timing: {receiveHeadersEnd: 500},
         url: mainDocumentNodeUrl,
       },
@@ -110,6 +113,7 @@ describe('Performance: uses-rel-preload audit', () => {
         isLinkPreload: false,
         networkRequestTime: 1000,
         networkEndTime: 2000,
+        transferSize: 1000,
         timing: {receiveHeadersEnd: 1000},
         url: scriptNodeUrl,
         initiator: {type: 'parser', url: mainDocumentNodeUrl},
@@ -121,6 +125,7 @@ describe('Performance: uses-rel-preload audit', () => {
         isLinkPreload: false,
         networkRequestTime: 2000,
         networkEndTime: 3_250,
+        transferSize: 1000,
         timing: {receiveHeadersEnd: 1250},
         url: scriptAddedNodeUrl,
         initiator: {type: 'script', url: scriptNodeUrl},
@@ -132,6 +137,7 @@ describe('Performance: uses-rel-preload audit', () => {
         isLinkPreload: false,
         networkRequestTime: 2000,
         networkEndTime: 3000,
+        transferSize: 1000,
         timing: {receiveHeadersEnd: 1000},
         url: scriptSubNodeUrl,
         initiator: {type: 'script', url: scriptNodeUrl},
@@ -143,6 +149,7 @@ describe('Performance: uses-rel-preload audit', () => {
         isLinkPreload: false,
         networkRequestTime: 2000,
         networkEndTime: 3_500,
+        transferSize: 1000,
         timing: {receiveHeadersEnd: 1500},
         url: scriptOtherNodeUrl,
         initiator: {type: 'script', url: scriptNodeUrl},
@@ -152,7 +159,7 @@ describe('Performance: uses-rel-preload audit', () => {
     const artifacts = mockArtifacts(networkRecords, mainDocumentNodeUrl);
     artifacts.URL.requestedUrl = rootNodeUrl;
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(
+    return UsesRelPreload.audit(artifacts, context).then(
       output => {
         assert.equal(output.details.overallSavingsMs, 330);
         assert.equal(output.details.items.length, 2);
@@ -169,8 +176,8 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(output => {
-      assert.equal(output.details.overallSavingsMs, 314);
+    return UsesRelPreload.audit(artifacts, context).then(output => {
+      assert.equal(output.details.overallSavingsMs, 303);
       assert.equal(output.details.items.length, 1);
     });
   });
@@ -206,7 +213,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    const result = await UsesRelPreload.audit_(artifacts, context);
+    const result = await UsesRelPreload.audit(artifacts, context);
     expect(result.warnings).toHaveLength(1);
   });
 
@@ -243,7 +250,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    const result = await UsesRelPreload.audit_(artifacts, context);
+    const result = await UsesRelPreload.audit(artifacts, context);
     expect(result.warnings).toBeUndefined();
   });
 
@@ -258,7 +265,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    const result = await UsesRelPreload.audit_(artifacts, context);
+    const result = await UsesRelPreload.audit(artifacts, context);
     expect(result.warnings).toBeUndefined();
   });
 
@@ -268,7 +275,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(output => {
+    return UsesRelPreload.audit(artifacts, context).then(output => {
       assert.equal(output.score, 1);
       assert.equal(output.details.overallSavingsMs, 0);
       assert.equal(output.details.items.length, 0);
@@ -281,7 +288,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    const result = await UsesRelPreload.audit_(artifacts, context);
+    const result = await UsesRelPreload.audit(artifacts, context);
     expect(result).toMatchObject({score: 1, details: {overallSavingsMs: 0, items: []}});
   });
 
@@ -291,7 +298,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(output => {
+    return UsesRelPreload.audit(artifacts, context).then(output => {
       assert.equal(output.score, 1);
       assert.equal(output.details.overallSavingsMs, 0);
       assert.equal(output.details.items.length, 0);
@@ -304,7 +311,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(output => {
+    return UsesRelPreload.audit(artifacts, context).then(output => {
       assert.equal(output.numericValue, 0);
       assert.equal(output.details.items.length, 0);
     });
@@ -316,7 +323,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const artifacts = mockArtifacts(networkRecords, defaultMainResourceUrl);
     const context = {settings: {}, computedCache: new Map()};
-    return UsesRelPreload.audit_(artifacts, context).then(output => {
+    return UsesRelPreload.audit(artifacts, context).then(output => {
       assert.equal(output.numericValue, 0);
       assert.equal(output.details.items.length, 0);
     });
@@ -335,7 +342,7 @@ describe('Performance: uses-rel-preload audit', () => {
 
     const settings = {throttlingMethod: 'provided'};
     const context = {settings, computedCache: new Map()};
-    const result = await UsesRelPreload.audit_(artifacts, context);
+    const result = await UsesRelPreload.audit(artifacts, context);
     assert.equal(result.score, 1);
     assert.equal(result.numericValue, 0);
   });

@@ -1,13 +1,12 @@
 /**
- * @license Copyright 2016 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2016 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import UsesHTTP2Audit from '../../../audits/dobetterweb/uses-http2.js';
 import {networkRecordsToDevtoolsLog} from '../../network-records-to-devtools-log.js';
 import {createTestTrace} from '../../create-test-trace.js';
-
 
 function buildArtifacts(networkRecords) {
   const frameUrl = networkRecords[0].url;
@@ -17,15 +16,16 @@ function buildArtifacts(networkRecords) {
     topLevelTasks: [{ts: 1000, duration: 50}],
     largestContentfulPaint: 5000,
     firstContentfulPaint: 2000,
+    networkRecords,
   });
   const devtoolsLog = networkRecordsToDevtoolsLog(networkRecords);
 
   return {
     LinkElements: [],
     URL: {
-      requestedUrl: networkRecords[0].url,
-      mainDocumentUrl: networkRecords[0].url,
-      finalDisplayedUrl: networkRecords[0].url,
+      requestedUrl: frameUrl,
+      mainDocumentUrl: frameUrl,
+      finalDisplayedUrl: frameUrl,
     },
     devtoolsLogs: {defaultPass: devtoolsLog},
     traces: {defaultPass: trace},
@@ -43,31 +43,37 @@ describe('Resources are fetched over http/2', () => {
   it('should pass when resources are requested via http/2', async () => {
     const networkRecords = [{
       url: 'https://www.example.com/',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
     {
       url: 'https://www.example.com/2',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
     {
       url: 'https://www.example.com/3',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
     {
       url: 'https://www.example.com/4',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
     {
       url: 'https://www.example.com/5',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
     {
       url: 'https://www.example.com/6',
+      transferSize: 1000,
       priority: 'High',
       protocol: 'h2',
     },
@@ -129,8 +135,6 @@ describe('Resources are fetched over http/2', () => {
       },
     ];
     const artifacts = buildArtifacts(networkRecords);
-    artifacts.devtoolsLogs.defaultPass =
-       networkRecordsToDevtoolsLog(networkRecords);
 
     const result = await UsesHTTP2Audit.audit(artifacts, context);
     const hosts = new Set(result.details.items.map(item => new URL(item.url).host));
@@ -191,7 +195,6 @@ describe('Resources are fetched over http/2', () => {
       },
     ];
     const artifacts = buildArtifacts(networkRecords);
-    artifacts.devtoolsLogs.defaultPass = networkRecordsToDevtoolsLog(networkRecords);
 
     const result = await UsesHTTP2Audit.audit(artifacts, context);
     const urls = new Set(result.details.items.map(item => item.url));
@@ -264,5 +267,65 @@ describe('Resources are fetched over http/2', () => {
     // make sure we have a failing score
     expect(result.score).toEqual(0);
     expect(result.metricSavings).toBeUndefined();
+  });
+
+  it('should identify multiplexable assets when run on recognizable 3p origins', async () => {
+    const networkRecords = [
+      {
+        url: 'https://www.twitter.com/',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.twitter.com/2',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.twitter.com/3',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.twitter.com/4',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.twitter.com/5',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.twitter.com/embed/foo',
+        transferSize: 1000,
+        priority: 'High',
+        protocol: 'HTTP/1.1',
+      },
+      {
+        url: 'https://www.facebook.com/embed',
+        transferSize: 1000,
+        protocol: 'HTTP/1.1',
+        priority: 'High',
+      },
+    ];
+    const artifacts = buildArtifacts(networkRecords);
+
+    const result = await UsesHTTP2Audit.audit(artifacts, context);
+    const urls = new Set(result.details.items.map(item => item.url));
+    const hosts = new Set(result.details.items.map(item => new URL(item.url).host));
+
+    // Make sure we don't pull in actual 3p domains.
+    expect(hosts).toEqual(new Set(['www.twitter.com']));
+
+    // Make sure we dont flag the 3rd party request for multiplexing.
+    expect(urls).not.toContain('https://www.facebook.com/embed');
+
+    expect(result.details.items).toHaveLength(6);
   });
 });

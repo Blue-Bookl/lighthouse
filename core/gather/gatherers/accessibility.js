@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2016 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2016 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /* global window, document, getNodeDetails */
@@ -42,7 +42,11 @@ async function runA11yChecks() {
       'accesskeys': {enabled: true},
       'area-alt': {enabled: false},
       'aria-allowed-role': {enabled: true},
+      'aria-braille-equivalent': {enabled: false},
+      'aria-conditional-attr': {enabled: true},
+      'aria-deprecated-role': {enabled: true},
       'aria-dialog-name': {enabled: true},
+      'aria-prohibited-attr': {enabled: true},
       'aria-roledescription': {enabled: false},
       'aria-treeitem-name': {enabled: true},
       'aria-text': {enabled: true},
@@ -70,6 +74,8 @@ async function runA11yChecks() {
       'select-name': {enabled: true},
       'server-side-image-map': {enabled: false},
       'skip-link': {enabled: true},
+      // https://github.com/GoogleChrome/lighthouse/issues/16163
+      'summary-name': {enabled: false},
       'svg-img-alt': {enabled: false},
       'tabindex': {enabled: true},
       'table-duplicate-name': {enabled: true},

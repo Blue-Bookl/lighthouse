@@ -1,14 +1,14 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import log from 'lighthouse-logger';
 
 import {Audit as BaseAudit} from '../../audits/audit.js';
 import BaseGatherer from '../../gather/base-gatherer.js';
-import {defaultSettings, defaultNavigationConfig} from '../../config/constants.js';
+import {defaultSettings} from '../../config/constants.js';
 import * as filters from '../../config/filters.js';
 
 describe('Config Filtering', () => {
@@ -77,37 +77,18 @@ describe('Config Filtering', () => {
       {id: 'Snapshot2', gatherer: {instance: snapshotGatherer}},
     ];
 
-    /** @type {Array<LH.Config.NavigationDefn>} */
-    const navigations = [
-      {
-        ...defaultNavigationConfig,
-        id: 'firstPass',
-        artifacts: [
-          {id: 'Snapshot', gatherer: {instance: snapshotGatherer}},
-          {id: 'Timespan', gatherer: {instance: timespanGatherer}},
-        ],
-      },
-      {
-        ...defaultNavigationConfig,
-        id: 'secondPass',
-        artifacts: [
-          {id: 'Snapshot2', gatherer: {instance: snapshotGatherer}},
-        ],
-      },
-    ];
-
     /** @type {Array<LH.Config.AuditDefn>} */
     const audits = [SnapshotAudit, TimespanAudit, NavigationAudit, ManualAudit].map(audit => ({
       implementation: audit,
       options: {},
     }));
 
-    return {artifacts, navigationArtifacts, navigations, audits};
+    return {artifacts, navigationArtifacts, audits};
   }
 
-  let {artifacts, navigationArtifacts, navigations, audits} = createTestObjects();
+  let {artifacts, navigationArtifacts, audits} = createTestObjects();
   beforeEach(() => {
-    ({artifacts, navigationArtifacts, navigations, audits} = createTestObjects());
+    ({artifacts, navigationArtifacts, audits} = createTestObjects());
   });
 
   describe('filterArtifactsByGatherMode', () => {
@@ -195,32 +176,6 @@ describe('Config Filtering', () => {
         {id: 'DependencysDependency', gatherer: {instance: base}},
         {id: 'SnapshotDependency', gatherer: {instance: dependent}},
         {id: 'Snapshot', gatherer: {instance: dependentsDependent}},
-      ]);
-    });
-  });
-
-  describe('filterNavigationsByAvailableArtifacts', () => {
-    it('should handle null', () => {
-      expect(filters.filterNavigationsByAvailableArtifacts(null, [])).toBe(null);
-    });
-
-    it('should filter out entire navigations', () => {
-      const partialArtifacts = [{id: 'Timespan', gatherer: {instance: snapshotGatherer}}];
-      const filtered = filters.filterNavigationsByAvailableArtifacts(navigations, partialArtifacts);
-      expect(filtered).toMatchObject([
-        {id: 'firstPass', artifacts: [{id: 'Timespan'}]},
-      ]);
-    });
-
-    it('should filter within navigation', () => {
-      const partialArtifacts = [
-        {id: 'Snapshot', gatherer: {instance: snapshotGatherer}},
-        {id: 'Snapshot2', gatherer: {instance: snapshotGatherer}},
-      ];
-      const filtered = filters.filterNavigationsByAvailableArtifacts(navigations, partialArtifacts);
-      expect(filtered).toMatchObject([
-        {id: 'firstPass', artifacts: [{id: 'Snapshot'}]},
-        {id: 'secondPass', artifacts: [{id: 'Snapshot2'}]},
       ]);
     });
   });
@@ -400,7 +355,6 @@ describe('Config Filtering', () => {
     it('should filter the entire config', () => {
       const config = {
         artifacts,
-        navigations,
         audits,
         categories,
         groups: null,
@@ -408,7 +362,6 @@ describe('Config Filtering', () => {
       };
 
       expect(filters.filterConfigByGatherMode(config, 'snapshot')).toMatchObject({
-        navigations,
         artifacts: [{id: 'Snapshot'}],
         audits: [{implementation: SnapshotAudit}, {implementation: ManualAudit}],
         categories: {
@@ -427,7 +380,6 @@ describe('Config Filtering', () => {
     beforeEach(() => {
       resolvedConfig = {
         artifacts: navigationArtifacts,
-        navigations,
         audits,
         categories,
         groups: null,
@@ -564,7 +516,6 @@ describe('Config Filtering', () => {
         skipAudits: null,
       });
       expect(filtered).toMatchObject({
-        navigations: [{id: 'firstPass'}],
         artifacts: [{id: 'Snapshot'}, {id: 'Timespan'}],
         audits: [
           {implementation: SnapshotAudit},
@@ -591,7 +542,6 @@ describe('Config Filtering', () => {
         skipAudits: null,
       });
       expect(filtered).toMatchObject({
-        navigations: [{id: 'firstPass'}],
         artifacts: [{id: 'Snapshot'}, {id: 'Timespan'}],
         audits: [
           {implementation: SnapshotAudit},
@@ -611,8 +561,6 @@ describe('Config Filtering', () => {
       resolvedConfig = {
         ...resolvedConfig,
       };
-      resolvedConfig.navigations?.[0].artifacts.push(
-        {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
       resolvedConfig.artifacts?.push(
         {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
 
@@ -622,7 +570,6 @@ describe('Config Filtering', () => {
         skipAudits: null,
       });
       expect(filtered).toMatchObject({
-        navigations: [{id: 'firstPass'}],
         artifacts: [{id: 'Snapshot'}, {id: 'Timespan'}, {id: 'FullPageScreenshot'}],
       });
     });
@@ -634,8 +581,6 @@ describe('Config Filtering', () => {
       resolvedConfig = {
         ...resolvedConfig,
       };
-      resolvedConfig.navigations?.[0].artifacts.push(
-        {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
       resolvedConfig.artifacts?.push(
         {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
 
@@ -645,7 +590,6 @@ describe('Config Filtering', () => {
         skipAudits: null,
       });
       expect(filtered).toMatchObject({
-        navigations: [{id: 'firstPass'}],
         artifacts: [{id: 'Snapshot'}, {id: 'Timespan'}, {id: 'FullPageScreenshot'}],
       });
     });
@@ -658,8 +602,6 @@ describe('Config Filtering', () => {
         ...resolvedConfig,
       };
       resolvedConfig.settings.disableFullPageScreenshot = true;
-      resolvedConfig.navigations?.[0].artifacts.push(
-        {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
       resolvedConfig.artifacts?.push(
         {id: 'FullPageScreenshot', gatherer: {instance: fpsGatherer}});
 
@@ -669,7 +611,6 @@ describe('Config Filtering', () => {
         skipAudits: null,
       });
       expect(filtered).toMatchObject({
-        navigations: [{id: 'firstPass'}],
         artifacts: [{id: 'Snapshot'}, {id: 'Timespan'}],
       });
     });

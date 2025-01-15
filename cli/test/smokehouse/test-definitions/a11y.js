@@ -1,11 +1,11 @@
 /**
- * @license Copyright 2017 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
- * Config for running PWA smokehouse audits for axe.
+ * Config for running accessibility smokehouse audits for axe.
  * @type {LH.Config}
  */
 const config = {
@@ -78,6 +78,22 @@ const expectations = {
           ],
         },
       },
+      'aria-conditional-attr': {
+        score: 0,
+        details: {
+          items: [
+            {
+              node: {
+                'type': 'node',
+                'selector': 'body > section > input#aria-conditional-attr',
+                'snippet': '<input id="aria-conditional-attr" type="checkbox" aria-checked="true">',
+                'nodeLabel': 'body > section > input#aria-conditional-attr',
+                'explanation': 'Fix all of the following:\n  Remove aria-checked, or set it to "false" to match the real checkbox state',
+              },
+            },
+          ],
+        },
+      },
       'aria-dialog-name': {
         score: 0,
         details: {
@@ -93,6 +109,22 @@ const expectations = {
                 'snippet': '<div role="alertdialog" id="aria-dialog-name" aria-label="">',
                 'explanation': 'Fix any of the following:\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute',
                 'nodeLabel': 'body > section > div#aria-dialog-name',
+              },
+            },
+          ],
+        },
+      },
+      'aria-deprecated-role': {
+        score: 0,
+        details: {
+          items: [
+            {
+              node: {
+                'type': 'node',
+                'selector': 'body > section > div#aria-deprecated-role',
+                'snippet': '<div role="directory" id="aria-deprecated-role">',
+                'nodeLabel': 'body > section > div#aria-deprecated-role',
+                'explanation': 'Fix all of the following:\n  The role used is deprecated: directory',
               },
             },
           ],
@@ -186,6 +218,22 @@ const expectations = {
           ],
         },
       },
+      'aria-prohibited-attr': {
+        score: 0,
+        details: {
+          items: [
+            {
+              node: {
+                'type': 'node',
+                'selector': 'body > section > div#aria-prohibited-attr',
+                'snippet': '<div id="aria-prohibited-attr" role="presentation" aria-label="Label">',
+                'nodeLabel': 'Label',
+                'explanation': 'Fix all of the following:\n  aria-label attribute cannot be used with role "null".',
+              },
+            },
+          ],
+        },
+      },
       'aria-treeitem-name': {
         score: 0,
         details: {
@@ -235,7 +283,7 @@ const expectations = {
                 'type': 'node',
                 'selector': 'body > section > div#aria-required-children',
                 'snippet': '<div id="aria-required-children" role="list">',
-                'explanation': 'Fix any of the following:\n  Required ARIA child role not present: listitem\n  Element uses aria-busy="true" while showing a loader',
+                'explanation': 'Fix any of the following:\n  Required ARIA child role not present: listitem',
                 'nodeLabel': 'Item',
               },
             },
@@ -298,7 +346,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > div#aria-required-attr',
-                'path': '2,HTML,1,BODY,25,SECTION,0,DIV',
                 'snippet': '<div id="aria-required-attr" role="checkbox">',
                 'explanation': 'Fix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute',
                 'nodeLabel': 'body > section > div#aria-required-attr',
@@ -308,7 +355,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > div > div#aria-required-parent',
-                'path': '2,HTML,1,BODY,29,SECTION,0,DIV,0,DIV',
                 'snippet': '<div id="aria-required-parent" role="option">',
                 'nodeLabel': 'body > section > div > div#aria-required-parent',
               },
@@ -317,7 +363,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > div#aria-valid-attr',
-                'path': '2,HTML,1,BODY,35,SECTION,0,DIV',
                 'snippet': '<div id="aria-valid-attr" role="checkbox" aria-chked="true">',
                 'nodeLabel': 'body > section > div#aria-valid-attr',
               },
@@ -326,7 +371,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > div#aria-valid-attr-value',
-                'path': '2,HTML,1,BODY,37,SECTION,0,DIV',
                 'snippet': '<div id="aria-valid-attr-value" role="checkbox" aria-checked="0">',
                 'nodeLabel': 'body > section > div#aria-valid-attr-value',
               },
@@ -375,7 +419,7 @@ const expectations = {
                 'type': 'node',
                 'selector': 'body > section > button#button-name',
                 'snippet': '<button id="button-name">',
-                'explanation': 'Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
+                'explanation': 'Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
                 'nodeLabel': 'body > section > button#button-name',
               },
             },
@@ -452,46 +496,14 @@ const expectations = {
 
         },
       },
-      'duplicate-id-active': {
-        score: 0,
-        details: {
-          items: [
-            {
-              node: {
-                'type': 'node',
-                'selector': 'body > section > textarea#duplicate-id-active',
-                'path': '2,HTML,1,BODY,47,SECTION,0,TEXTAREA',
-                'snippet': '<textarea id="duplicate-id-active" aria-label="text1">',
-                'explanation': 'Fix any of the following:\n  Document has active elements with the same id attribute: duplicate-id-active',
-                'nodeLabel': 'text1',
-              },
-              subItems: {
-                type: 'subitems',
-                items: [
-                  {
-                    relatedNode: {
-                      'type': 'node',
-                      'path': '2,HTML,1,BODY,47,SECTION,1,TEXTAREA',
-                      'selector': 'body > section > textarea#duplicate-id-active',
-                      'snippet': '<textarea id="duplicate-id-active" aria-label="text2">',
-                      'nodeLabel': 'text2',
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      },
       'duplicate-id-aria': {
-        score: 0,
+        score: 1,
         details: {
           items: [
             {
               node: {
                 'type': 'node',
                 'selector': 'body > section > div#duplicate-id-aria',
-                'path': '2,HTML,1,BODY,49,SECTION,0,DIV',
                 'snippet': '<div id="duplicate-id-aria" class="duplicate-id-aria">',
                 'explanation': 'Fix any of the following:\n  Document has multiple elements referenced with ARIA with the same id attribute: duplicate-id-aria',
                 'nodeLabel': 'body > section > div#duplicate-id-aria',
@@ -502,7 +514,6 @@ const expectations = {
                   {
                     relatedNode: {
                       'type': 'node',
-                      'path': '2,HTML,1,BODY,49,SECTION,0,DIV,0,DIV',
                       'selector': 'body > section > div#duplicate-id-aria > div#duplicate-id-aria',
                       'snippet': '<div id="duplicate-id-aria">',
                       'nodeLabel': 'body > section > div#duplicate-id-aria > div#duplicate-id-aria',
@@ -515,7 +526,7 @@ const expectations = {
         },
       },
       'empty-heading': {
-        score: null,
+        score: 1,
         details: {
           items: [
             {
@@ -531,7 +542,7 @@ const expectations = {
         },
       },
       'form-field-multiple-labels': {
-        score: null,
+        score: 1,
         scoreDisplayMode: 'informative',
         details: {
           items: [
@@ -539,7 +550,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > input#form-field-multiple-labels',
-                'path': '2,HTML,1,BODY,53,SECTION,2,INPUT',
                 'snippet': '<input type="checkbox" id="form-field-multiple-labels">',
                 'explanation': 'Fix all of the following:\n  Multiple label elements is not widely supported in assistive technologies. Ensure the first label contains all necessary information.',
                 'nodeLabel': 'body > section > input#form-field-multiple-labels',
@@ -550,7 +560,6 @@ const expectations = {
                   {
                     relatedNode: {
                       'type': 'node',
-                      'path': '2,HTML,1,BODY,53,SECTION,0,LABEL',
                       'selector': 'body > section > label#label1',
                       'snippet': '<label for="form-field-multiple-labels" id="label1">',
                       'nodeLabel': 'label1',
@@ -559,7 +568,6 @@ const expectations = {
                   {
                     relatedNode: {
                       'type': 'node',
-                      'path': '2,HTML,1,BODY,53,SECTION,1,LABEL',
                       'selector': 'body > section > label',
                       'snippet': '<label for="form-field-multiple-labels">',
                       'nodeLabel': 'label2',
@@ -595,7 +603,6 @@ const expectations = {
               node: {
                 'type': 'node',
                 'selector': 'body > section > h3',
-                'path': '2,HTML,1,BODY,57,SECTION,1,H3',
                 'snippet': '<h3>',
                 'explanation': 'Fix any of the following:\n  Heading order invalid',
                 'nodeLabel': 'sub-sub-header',
@@ -625,7 +632,7 @@ const expectations = {
         scoreDisplayMode: 'notApplicable',
       },
       'identical-links-same-purpose': {
-        score: null,
+        score: 1,
         details: {
           items: [
             {
@@ -681,7 +688,7 @@ const expectations = {
                 'type': 'node',
                 'selector': 'body > section > form > input#input-button-name',
                 'snippet': '<input type="button" id="input-button-name">',
-                'explanation': 'Fix any of the following:\n  Element has a value attribute and the value attribute is empty\n  Element has no value attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
+                'explanation': 'Fix any of the following:\n  Element has a value attribute and the value attribute is empty\n  Element has no value attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
                 'nodeLabel': 'body > section > form > input#input-button-name',
               },
             },
@@ -697,7 +704,7 @@ const expectations = {
                 'type': 'node',
                 'selector': 'body > section > input#input-image-alt',
                 'snippet': '<input type="image" id="input-image-alt">',
-                'explanation': 'Fix any of the following:\n  Element has no alt attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute',
+                'explanation': 'Fix any of the following:\n  Element has no alt attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>',
                 'nodeLabel': 'body > section > input#input-image-alt',
               },
             },
@@ -739,7 +746,7 @@ const expectations = {
         },
       },
       'landmark-one-main': {
-        score: null,
+        score: 1,
         details: {
           items: [
             {
@@ -859,7 +866,7 @@ const expectations = {
                 'type': 'node',
                 'selector': 'body > section > select#select-name',
                 'snippet': '<select id="select-name">',
-                'explanation': 'Fix any of the following:\n  Form element does not have an implicit (wrapped) <label>\n  Form element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
+                'explanation': 'Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element\'s default semantics were not overridden with role="none" or role="presentation"',
                 'nodeLabel': 'body > section > select#select-name',
               },
             },
@@ -931,16 +938,26 @@ const expectations = {
         },
       },
       'target-size': {
-        score: null,
+        score: 0,
         details: {
           items: [
+            {
+              node: {
+                'type': 'node',
+                'selector': 'body > section > button#target-size-1',
+                'snippet': '<button id="target-size-1">',
+                // Exact target size can vary depending on the device.
+                'explanation': /^Fix any of the following:\n {2}Target has insufficient size \([0-9.]+px by [0-9.]+px, should be at least 24px by 24px\)\n {2}Target has insufficient space to its closest neighbors. Safe clickable space has a diameter of [0-9.]+px instead of at least 24px\.$/,
+                'nodeLabel': '+',
+              },
+            },
             {
               node: {
                 'type': 'node',
                 'selector': 'body > section > span#target-size-2',
                 'snippet': '<span role="button" tabindex="0" id="target-size-2">',
                 // Exact target size can vary depending on the device.
-                'explanation': /^Fix any of the following:\n {2}Target has insufficient size \([0-9.]+px by [0-9.]+px, should be at least 24px by 24px\)\n {2}Target has insufficient offset from its closest neighbor \([0-9.]+px should be at least 24px\)$/,
+                'explanation': /^Fix any of the following:\n {2}Target has insufficient size \([0-9.]+px by [0-9.]+px, should be at least 24px by 24px\)\n {2}Target has insufficient space to its closest neighbors. Safe clickable space has a diameter of [0-9.]+px instead of at least 24px\.$/,
                 'nodeLabel': 'o',
               },
             },

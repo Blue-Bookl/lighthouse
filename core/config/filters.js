@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2021 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import log from 'lighthouse-logger';
@@ -13,13 +13,13 @@ const baseArtifactKeySource = {
   fetchTime: '',
   LighthouseRunWarnings: '',
   BenchmarkIndex: '',
-  BenchmarkIndexes: '',
   settings: '',
   Timing: '',
   URL: '',
   PageLoadError: '',
   HostFormFactor: '',
   HostUserAgent: '',
+  HostProduct: '',
   GatherContext: '',
 };
 
@@ -105,30 +105,6 @@ function filterArtifactsByGatherMode(artifacts, mode) {
   return artifacts.filter(artifact => {
     return artifact.gatherer.instance.meta.supportedModes.includes(mode);
   });
-}
-
-/**
- * Filters an array of navigations down to the set supported by the available artifacts.
- *
- * @param {LH.Config.ResolvedConfig['navigations']} navigations
- * @param {Array<LH.Config.AnyArtifactDefn>} availableArtifacts
- * @return {LH.Config.ResolvedConfig['navigations']}
- */
-function filterNavigationsByAvailableArtifacts(navigations, availableArtifacts) {
-  if (!navigations) return navigations;
-
-  const availableArtifactIds = new Set(
-    availableArtifacts.map(artifact => artifact.id).concat(baseArtifactKeys)
-  );
-
-  return navigations
-    .map(navigation => {
-      return {
-        ...navigation,
-        artifacts: navigation.artifacts.filter((artifact) => availableArtifactIds.has(artifact.id)),
-      };
-    })
-    .filter(navigation => navigation.artifacts.length);
 }
 
 /**
@@ -318,13 +294,10 @@ function filterConfigByExplicitFilters(resolvedConfig, filters) {
   if (artifacts && resolvedConfig.settings.disableFullPageScreenshot) {
     artifacts = artifacts.filter(({id}) => id !== 'FullPageScreenshot');
   }
-  const navigations =
-    filterNavigationsByAvailableArtifacts(resolvedConfig.navigations, artifacts || []);
 
   return {
     ...resolvedConfig,
     artifacts,
-    navigations,
     audits,
     categories,
   };
@@ -335,7 +308,6 @@ export {
   filterConfigByExplicitFilters,
   filterArtifactsByGatherMode,
   filterArtifactsByAvailableAudits,
-  filterNavigationsByAvailableArtifacts,
   filterAuditsByAvailableArtifacts,
   filterAuditsByGatherMode,
   filterCategoriesByAvailableAudits,

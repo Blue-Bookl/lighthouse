@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /* global getNodeDetails */
@@ -15,7 +15,6 @@
 import BaseGatherer from '../base-gatherer.js';
 import {resolveNodeIdToObjectId} from '../driver/dom.js';
 import {pageFunctions} from '../../lib/page-functions.js';
-import * as RectHelpers from '../../lib/rect-helpers.js';
 import {Sentry} from '../../lib/sentry.js';
 import Trace from './trace.js';
 import {ProcessedTrace} from '../../computed/processed-trace.js';
@@ -24,8 +23,12 @@ import {LighthouseError} from '../../lib/lh-error.js';
 import {Responsiveness} from '../../computed/metrics/responsiveness.js';
 import {CumulativeLayoutShift} from '../../computed/metrics/cumulative-layout-shift.js';
 import {ExecutionContext} from '../driver/execution-context.js';
+import RootCauses from './root-causes.js';
+import {TraceEngineResult} from '../../computed/trace-engine-result.js';
 
-/** @typedef {{nodeId: number, score?: number, animations?: {name?: string, failureReasonsMask?: number, unsupportedProperties?: string[]}[], type?: string}} TraceElementData */
+/** @typedef {{nodeId: number, animations?: {name?: string, failureReasonsMask?: number, unsupportedProperties?: string[]}[], type?: string}} TraceElementData */
+
+const MAX_LAYOUT_SHIFTS = 15;
 
 /**
  * @this {HTMLElement}
@@ -43,10 +46,10 @@ function getNodeDetailsData() {
 /* c8 ignore stop */
 
 class TraceElements extends BaseGatherer {
-  /** @type {LH.Gatherer.GathererMeta<'Trace'>} */
+  /** @type {LH.Gatherer.GathererMeta<'Trace'|'RootCauses'>} */
   meta = {
     supportedModes: ['timespan', 'navigation'],
-    dependencies: {Trace: Trace.symbol},
+    dependencies: {Trace: Trace.symbol, RootCauses: RootCauses.symbol},
   };
 
   /** @type {Map<string, string>} */
@@ -63,75 +66,97 @@ class TraceElements extends BaseGatherer {
   }
 
   /**
-   * @param {Array<number>} rect
-   * @return {LH.Artifacts.Rect}
+   * We want to a single representative node to represent the shift, so let's pick
+   * the one with the largest impact (size x distance moved).
+   *
+   * @param {LH.Artifacts.TraceImpactedNode[]} impactedNodes
+   * @param {Map<number, number>} impactByNodeId
+   * @param {import('../../lib/trace-engine.js').SaneSyntheticLayoutShift} event Only for debugging
+   * @return {number|undefined}
    */
-  static traceRectToLHRect(rect) {
-    const rectArgs = {
-      x: rect[0],
-      y: rect[1],
-      width: rect[2],
-      height: rect[3],
-    };
-    return RectHelpers.addRectTopAndBottom(rectArgs);
+  static getBiggestImpactNodeForShiftEvent(impactedNodes, impactByNodeId, event) {
+    try {
+      let biggestImpactNodeId;
+      let biggestImpactNodeScore = Number.NEGATIVE_INFINITY;
+      for (const node of impactedNodes) {
+        const impactScore = impactByNodeId.get(node.node_id);
+        if (impactScore !== undefined && impactScore > biggestImpactNodeScore) {
+          biggestImpactNodeId = node.node_id;
+          biggestImpactNodeScore = impactScore;
+        }
+      }
+      return biggestImpactNodeId;
+    } catch (err) {
+      // See https://github.com/GoogleChrome/lighthouse/issues/15870
+      // `impactedNodes` should always be an array here, but it can randomly be something else for
+      // currently unknown reasons. This exception handling will help us identify what
+      // `impactedNodes` really is and also prevent the error from being fatal.
+
+      // It's possible `impactedNodes` is not JSON serializable, so let's add more supplemental
+      // fields just in case.
+      const impactedNodesType = typeof impactedNodes;
+      const impactedNodesClassName = impactedNodes?.constructor?.name;
+
+      let impactedNodesJson;
+      let eventJson;
+      try {
+        impactedNodesJson = JSON.parse(JSON.stringify(impactedNodes));
+        eventJson = JSON.parse(JSON.stringify(event));
+      } catch {}
+
+      Sentry.captureException(err, {
+        extra: {
+          impactedNodes: impactedNodesJson,
+          event: eventJson,
+          impactedNodesType,
+          impactedNodesClassName,
+        },
+      });
+      return;
+    }
   }
 
   /**
-   * This function finds the top (up to 5) elements that contribute to the CLS score of the page.
-   * Each layout shift event has a 'score' which is the amount added to the CLS as a result of the given shift(s).
-   * We calculate the score per element by taking the 'score' of each layout shift event and
-   * distributing it between all the nodes that were shifted, proportianal to the impact region of
-   * each shifted element.
-   * @param {LH.Artifacts.ProcessedTrace} processedTrace
-   * @return {Array<TraceElementData>}
+   * This function finds the top (up to 15) layout shifts on the page, and returns
+   * the id of the largest impacted node of each shift, along with any related nodes
+   * that may have caused the shift.
+   *
+   * @param {LH.Trace} trace
+   * @param {LH.Artifacts.TraceEngineResult['data']} traceEngineResult
+   * @param {LH.Artifacts.TraceEngineRootCauses} rootCauses
+   * @param {LH.Gatherer.Context} context
+   * @return {Promise<Array<{nodeId: number}>>}
    */
-  static getTopLayoutShiftElements(processedTrace) {
-    /** @type {Map<number, number>} */
-    const clsPerNode = new Map();
-    const shiftEvents = CumulativeLayoutShift.getLayoutShiftEvents(processedTrace);
+  static async getTopLayoutShifts(trace, traceEngineResult, rootCauses, context) {
+    const {impactByNodeId} = await CumulativeLayoutShift.request(trace, context);
+    const clusters = traceEngineResult.LayoutShifts.clusters ?? [];
+    const layoutShiftEvents =
+      /** @type {import('../../lib/trace-engine.js').SaneSyntheticLayoutShift[]} */(
+        clusters.flatMap(c => c.events)
+      );
 
-    shiftEvents.forEach((event) => {
-      if (!event || !event.impactedNodes) {
-        return;
-      }
-
-      let totalAreaOfImpact = 0;
-      /** @type {Map<number, number>} */
-      const pixelsMovedPerNode = new Map();
-
-      event.impactedNodes.forEach(node => {
-        if (!node.node_id || !node.old_rect || !node.new_rect) {
-          return;
+    return layoutShiftEvents
+      .sort((a, b) => b.args.data.weighted_score_delta - a.args.data.weighted_score_delta)
+      .slice(0, MAX_LAYOUT_SHIFTS)
+      .flatMap(event => {
+        const nodeIds = [];
+        const impactedNodes = event.args.data.impacted_nodes || [];
+        const biggestImpactedNodeId =
+          this.getBiggestImpactNodeForShiftEvent(impactedNodes, impactByNodeId, event);
+        if (biggestImpactedNodeId !== undefined) {
+          nodeIds.push(biggestImpactedNodeId);
         }
 
-        const oldRect = TraceElements.traceRectToLHRect(node.old_rect);
-        const newRect = TraceElements.traceRectToLHRect(node.new_rect);
-        const areaOfImpact = RectHelpers.getRectArea(oldRect) +
-          RectHelpers.getRectArea(newRect) -
-          RectHelpers.getRectOverlapArea(oldRect, newRect);
+        const index = layoutShiftEvents.indexOf(event);
+        const shiftRootCauses = rootCauses.layoutShifts[index];
+        if (shiftRootCauses) {
+          for (const cause of shiftRootCauses.unsizedMedia) {
+            nodeIds.push(cause.node.backendNodeId);
+          }
+        }
 
-        pixelsMovedPerNode.set(node.node_id, areaOfImpact);
-        totalAreaOfImpact += areaOfImpact;
+        return nodeIds.map(nodeId => ({nodeId}));
       });
-
-      for (const [nodeId, pixelsMoved] of pixelsMovedPerNode.entries()) {
-        let clsContribution = clsPerNode.get(nodeId) || 0;
-        clsContribution += (pixelsMoved / totalAreaOfImpact) * event.weightedScore;
-        clsPerNode.set(nodeId, clsContribution);
-      }
-    });
-
-    const topFive = [...clsPerNode.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([nodeId, clsContribution]) => {
-      return {
-        nodeId: nodeId,
-        score: clsContribution,
-      };
-    });
-
-    return topFive;
   }
 
   /**
@@ -143,7 +168,7 @@ class TraceElements extends BaseGatherer {
     const {settings} = context;
     try {
       const responsivenessEvent = await Responsiveness.request({trace, settings}, context);
-      if (!responsivenessEvent || responsivenessEvent.name === 'FallbackTiming') return;
+      if (!responsivenessEvent) return;
       return {nodeId: responsivenessEvent.args.data.nodeId};
     } catch {
       // Don't let responsiveness errors sink the rest of the gatherer.
@@ -250,68 +275,81 @@ class TraceElements extends BaseGatherer {
   }
 
   /**
-   * @param {LH.Gatherer.Context<'Trace'>} context
+   * @param {LH.Gatherer.ProtocolSession} session
+   * @param {number} backendNodeId
+   */
+  async getNodeDetails(session, backendNodeId) {
+    try {
+      const objectId = await resolveNodeIdToObjectId(session, backendNodeId);
+      if (!objectId) return null;
+
+      const deps = ExecutionContext.serializeDeps([
+        pageFunctions.getNodeDetails,
+        getNodeDetailsData,
+      ]);
+      return await session.sendCommand('Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: `function () {
+          ${deps}
+          return getNodeDetailsData.call(this);
+        }`,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: {gatherer: 'TraceElements'},
+        level: 'error',
+      });
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {LH.Gatherer.Context<'Trace'|'RootCauses'>} context
    * @return {Promise<LH.Artifacts.TraceElement[]>}
    */
   async getArtifact(context) {
     const session = context.driver.defaultSession;
 
     const trace = context.dependencies.Trace;
-    if (!trace) {
-      throw new Error('Trace is missing!');
-    }
+    const traceEngineResult = await TraceEngineResult.request({trace}, context);
+    const rootCauses = context.dependencies.RootCauses;
 
     const processedTrace = await ProcessedTrace.request(trace, context);
     const {mainThreadEvents} = processedTrace;
 
     const lcpNodeData = await TraceElements.getLcpElement(trace, context);
-    const clsNodeData = TraceElements.getTopLayoutShiftElements(processedTrace);
+    const shiftsData = await TraceElements.getTopLayoutShifts(
+      trace, traceEngineResult.data, rootCauses, context);
     const animatedElementData = await this.getAnimatedElements(mainThreadEvents);
     const responsivenessElementData = await TraceElements.getResponsivenessElement(trace, context);
 
     /** @type {Map<string, TraceElementData[]>} */
     const backendNodeDataMap = new Map([
       ['largest-contentful-paint', lcpNodeData ? [lcpNodeData] : []],
-      ['layout-shift', clsNodeData],
+      ['layout-shift', shiftsData],
       ['animation', animatedElementData],
       ['responsiveness', responsivenessElementData ? [responsivenessElementData] : []],
     ]);
 
+    /** @type {Map<number, LH.Crdp.Runtime.CallFunctionOnResponse | null>} */
+    const callFunctionOnCache = new Map();
     const traceElements = [];
     for (const [traceEventType, backendNodeData] of backendNodeDataMap) {
       for (let i = 0; i < backendNodeData.length; i++) {
         const backendNodeId = backendNodeData[i].nodeId;
-        let response;
-        try {
-          const objectId = await resolveNodeIdToObjectId(session, backendNodeId);
-          if (!objectId) continue;
-
-          const deps = ExecutionContext.serializeDeps([
-            pageFunctions.getNodeDetails,
-            getNodeDetailsData,
-          ]);
-          response = await session.sendCommand('Runtime.callFunctionOn', {
-            objectId,
-            functionDeclaration: `function () {
-              ${deps}
-              return getNodeDetailsData.call(this);
-            }`,
-            returnByValue: true,
-            awaitPromise: true,
-          });
-        } catch (err) {
-          Sentry.captureException(err, {
-            tags: {gatherer: 'TraceElements'},
-            level: 'error',
-          });
-          continue;
+        let response = callFunctionOnCache.get(backendNodeId);
+        if (response === undefined) {
+          response = await this.getNodeDetails(session, backendNodeId);
+          callFunctionOnCache.set(backendNodeId, response);
         }
 
         if (response?.result?.value) {
           traceElements.push({
             traceEventType,
             ...response.result.value,
-            score: backendNodeData[i].score,
             animations: backendNodeData[i].animations,
             nodeId: backendNodeId,
             type: backendNodeData[i].type,

@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2021 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import log from 'lighthouse-logger';
@@ -39,7 +39,7 @@ const DEFAULT_NETWORK_QUIET_THRESHOLD = 5000;
 // Controls how long to wait between longtasks before determining the CPU is idle, off by default
 const DEFAULT_CPU_QUIET_THRESHOLD = 0;
 
-/** @typedef {{waitUntil: Array<'fcp'|'load'|'navigated'>} & LH.Config.SharedPassNavigationJson & Partial<Pick<LH.Config.Settings, 'maxWaitForFcp'|'maxWaitForLoad'|'debugNavigation'>>} NavigationOptions */
+/** @typedef {{waitUntil: Array<'fcp'|'load'|'navigated'>} & Partial<LH.Config.Settings>} NavigationOptions */
 
 /** @param {NavigationOptions} options */
 function resolveWaitForFullyLoadedOptions(options) {
@@ -122,7 +122,10 @@ async function gotoURL(driver, requestor, options) {
     throw new Error('Cannot wait for FCP without waiting for page load');
   }
 
-  const waitConditions = await Promise.all(waitConditionPromises);
+  const waitConditions = await Promise.race([
+    session.onCrashPromise(),
+    Promise.all(waitConditionPromises),
+  ]);
   const timedOut = waitConditions.some(condition => condition.timedOut);
   const navigationUrls = await networkMonitor.getNavigationUrls();
 

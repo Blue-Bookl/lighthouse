@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2017 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert/strict';
@@ -433,7 +433,8 @@ describe('OffscreenImages audit', () => {
       priority: 'High',
       timing: {receiveHeadersEnd: 2.5},
     };
-    const devtoolsLog = networkRecordsToDevtoolsLog([recordA, recordB]);
+    const networkRecords = [recordA, recordB];
+    const devtoolsLog = networkRecordsToDevtoolsLog(networkRecords);
 
     const topLevelTasks = [
       {ts: 1975, duration: 50},
@@ -457,7 +458,11 @@ describe('OffscreenImages audit', () => {
           src: recordB.url,
         }),
       ],
-      traces: {defaultPass: createTestTrace({topLevelTasks})},
+      traces: {defaultPass: createTestTrace({
+        largestContentfulPaint: 15,
+        topLevelTasks,
+        networkRecords,
+      })},
       devtoolsLogs: {defaultPass: devtoolsLog},
       URL: {
         requestedUrl: recordA.url,
@@ -494,7 +499,8 @@ describe('OffscreenImages audit', () => {
       priority: 'High',
       timing: {receiveHeadersEnd: 1.5},
     };
-    const devtoolsLog = networkRecordsToDevtoolsLog([recordA, recordB]);
+    const networkRecords = [recordA, recordB];
+    const devtoolsLog = networkRecordsToDevtoolsLog(networkRecords);
 
     // Enough tasks to spread out graph.
     const topLevelTasks = [
@@ -521,7 +527,11 @@ describe('OffscreenImages audit', () => {
           src: recordB.url,
         }),
       ],
-      traces: {defaultPass: createTestTrace({topLevelTasks})},
+      traces: {defaultPass: createTestTrace({
+        largestContentfulPaint: 15,
+        topLevelTasks,
+        networkRecords,
+      })},
       devtoolsLogs: {defaultPass: devtoolsLog},
       URL: {
         requestedUrl: recordA.url,
@@ -564,7 +574,7 @@ describe('OffscreenImages audit', () => {
           src: 'b',
         }),
       ],
-      traces: {defaultPass: createTestTrace({traceEnd: 2000})},
+      traces: {defaultPass: createTestTrace({traceEnd: 2000, networkRecords})},
       devtoolsLogs: {},
     };
 
@@ -587,6 +597,7 @@ describe('OffscreenImages audit', () => {
       priority: 'High',
       timing: {receiveHeadersEnd: 1.25},
     };
+    const networkRecords = [networkRecord];
 
     const artifacts = {
       ViewportDimensions: DEFAULT_DIMENSIONS,
@@ -598,7 +609,7 @@ describe('OffscreenImages audit', () => {
           networkRecord,
         }),
       ],
-      traces: {defaultPass: createTestTrace({traceEnd: 2000})},
+      traces: {defaultPass: createTestTrace({traceEnd: 2000, networkRecords})},
       devtoolsLogs: {},
     };
 

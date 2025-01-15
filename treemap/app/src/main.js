@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /* eslint-env browser */
@@ -14,8 +14,11 @@ import {GithubApi} from '../../../viewer/app/src/github-api.js';
 import {I18nFormatter} from '../../../report/renderer/i18n-formatter.js';
 import {TextEncoding} from '../../../report/renderer/text-encoding.js';
 import {Logger} from '../../../report/renderer/logger.js';
+import {DOM} from '../../../report/renderer/dom.js';
 
 /** @typedef {LH.Treemap.Node & {dom?: HTMLElement}} NodeWithElement */
+
+const dom = new DOM(document, document.documentElement);
 
 const DUPLICATED_MODULES_IGNORE_THRESHOLD = 1024;
 const DUPLICATED_MODULES_IGNORE_ROOT_RATIO = 0.01;
@@ -129,7 +132,7 @@ class TreemapViewer {
   }
 
   createHeader() {
-    const urlEl = TreemapUtil.find('a.lh-header--url');
+    const urlEl = dom.find('a.lh-header--url');
     urlEl.textContent = this.documentUrl.toString();
     urlEl.href = this.documentUrl.toString();
 
@@ -137,8 +140,8 @@ class TreemapViewer {
   }
 
   createBundleSelector() {
-    const bundleSelectorEl = TreemapUtil.find('select.bundle-selector');
-    bundleSelectorEl.innerHTML = ''; // Clear just in case document was saved with Ctrl+S.
+    const bundleSelectorEl = dom.find('select.bundle-selector');
+    bundleSelectorEl.textContent = ''; // Clear just in case document was saved with Ctrl+S.
 
     /** @type {LH.Treemap.Selector[]} */
     const selectors = [];
@@ -148,7 +151,7 @@ class TreemapViewer {
      * @param {string} text
      */
     function makeOption(selector, text) {
-      const optionEl = TreemapUtil.createChildOf(bundleSelectorEl, 'option');
+      const optionEl = dom.createChildOf(bundleSelectorEl, 'option');
       optionEl.value = String(selectors.length);
       selectors.push(selector);
       optionEl.textContent = text;
@@ -183,7 +186,7 @@ class TreemapViewer {
 
   initListeners() {
     const options = {signal: this.abortController.signal};
-    const treemapEl = TreemapUtil.find('.lh-treemap');
+    const treemapEl = dom.find('.lh-treemap');
 
     const resizeObserver = new ResizeObserver(() => this.resize());
     resizeObserver.observe(treemapEl);
@@ -222,7 +225,7 @@ class TreemapViewer {
       nodeEl.classList.remove('webtreemap-node--hover');
     }, options);
 
-    TreemapUtil.find('.lh-table').addEventListener('mouseover', e => {
+    dom.find('.lh-table').addEventListener('mouseover', e => {
       const target = e.target;
       if (!(target instanceof HTMLElement)) return;
 
@@ -240,7 +243,7 @@ class TreemapViewer {
       }, {once: true});
     }, options);
 
-    const toggleTableBtn = TreemapUtil.find('.lh-button--toggle-table');
+    const toggleTableBtn = dom.find('.lh-button--toggle-table');
     toggleTableBtn.addEventListener('click', () => treemapViewer.toggleTable(), options);
   }
 
@@ -428,9 +431,9 @@ class TreemapViewer {
         spacing: 10,
         caption: node => this.makeCaption(node),
       });
-      this.el.innerHTML = '';
+      this.el.textContent = '';
       this.treemap.render(this.el);
-      TreemapUtil.find('.webtreemap-node').classList.add('webtreemap-node--root');
+      dom.find('.webtreemap-node').classList.add('webtreemap-node--root');
 
       this.createTable();
     }
@@ -447,8 +450,8 @@ class TreemapViewer {
   }
 
   createTable() {
-    const tableEl = TreemapUtil.find('.lh-table');
-    tableEl.innerHTML = '';
+    const tableEl = dom.find('.lh-table');
+    tableEl.textContent = '';
 
     /** @type {Array<{node: NodeWithElement, name: string, bundleNode?: LH.Treemap.Node, resourceBytes: number, unusedBytes?: number}>} */
     const data = [];
@@ -535,12 +538,12 @@ class TreemapViewer {
         // eslint-disable-next-line max-len
         {title: TreemapUtil.strings.tableColumnName, field: 'name', widthGrow: 5, tooltip: makeNameTooltip},
         // eslint-disable-next-line max-len
-        {title: TreemapUtil.strings.resourceBytesLabel, field: 'resourceBytes', headerSortStartingDir: 'desc', tooltip: makeBytesTooltip('resourceBytes'), formatter: cell => {
+        {title: TreemapUtil.strings.resourceBytesLabel, field: 'resourceBytes', sorter: 'number', headerSortStartingDir: 'desc', tooltip: makeBytesTooltip('resourceBytes'), formatter: cell => {
           const value = cell.getValue();
           return TreemapUtil.i18n.formatBytesWithBestUnit(value);
         }},
         // eslint-disable-next-line max-len
-        {title: TreemapUtil.strings.unusedBytesLabel, field: 'unusedBytes', widthGrow: 1, sorterParams: {alignEmptyValues: 'bottom'}, headerSortStartingDir: 'desc', tooltip: makeBytesTooltip('unusedBytes'), formatter: cell => {
+        {title: TreemapUtil.strings.unusedBytesLabel, field: 'unusedBytes', sorter: 'number', widthGrow: 1, sorterParams: {alignEmptyValues: 'bottom'}, headerSortStartingDir: 'desc', tooltip: makeBytesTooltip('unusedBytes'), formatter: cell => {
           const value = cell.getValue();
           if (value === undefined) return '';
           return TreemapUtil.i18n.formatBytesWithBestUnit(value);
@@ -550,15 +553,15 @@ class TreemapViewer {
           /** @type {typeof data[number]} */
           const dataRow = cell.getRow().getData();
 
-          const el = TreemapUtil.createElement('div', 'lh-coverage-bar');
+          const el = dom.createElement('div', 'lh-coverage-bar');
           if (dataRow.unusedBytes === undefined) return el;
 
           el.style.setProperty('--max', String(maxSize));
           el.style.setProperty('--used', String(dataRow.resourceBytes - dataRow.unusedBytes));
           el.style.setProperty('--unused', String(dataRow.unusedBytes));
 
-          TreemapUtil.createChildOf(el, 'div', 'lh-coverage-bar--used');
-          TreemapUtil.createChildOf(el, 'div', 'lh-coverage-bar--unused');
+          dom.createChildOf(el, 'div', 'lh-coverage-bar--used');
+          dom.createChildOf(el, 'div', 'lh-coverage-bar--unused');
 
           return el;
         }},
@@ -573,9 +576,9 @@ class TreemapViewer {
    * @param {boolean=} show
    */
   toggleTable(show) {
-    const mainEl = TreemapUtil.find('main');
+    const mainEl = dom.find('main');
     mainEl.classList.toggle('lh-main--show-table', show);
-    const buttonEl = TreemapUtil.find('.lh-button--toggle-table');
+    const buttonEl = dom.find('.lh-button--toggle-table');
     buttonEl.classList.toggle('lh-button--active', show);
   }
 
@@ -669,20 +672,20 @@ function renderViewModeButtons(viewModes) {
    * @param {LH.Treemap.ViewMode} viewMode
    */
   function render(viewMode) {
-    const viewModeEl = TreemapUtil.createChildOf(viewModesEl, 'div', 'view-mode');
+    const viewModeEl = dom.createChildOf(viewModesEl, 'div', 'view-mode');
     if (!viewMode.enabled) viewModeEl.classList.add('view-mode--disabled');
     viewModeEl.id = `view-mode--${viewMode.id}`;
 
-    const inputEl = TreemapUtil.createChildOf(viewModeEl, 'input', 'view-mode__button');
+    const inputEl = dom.createChildOf(viewModeEl, 'input', 'view-mode__button');
     inputEl.id = `view-mode--${viewMode.id}__label`;
     inputEl.type = 'radio';
     inputEl.name = 'view-mode';
     inputEl.disabled = !viewMode.enabled;
 
-    const labelEl = TreemapUtil.createChildOf(viewModeEl, 'label');
+    const labelEl = dom.createChildOf(viewModeEl, 'label');
     labelEl.htmlFor = inputEl.id;
-    TreemapUtil.createChildOf(labelEl, 'span', 'view-mode__label').textContent = viewMode.label;
-    TreemapUtil.createChildOf(labelEl, 'span', 'view-mode__sublabel lh-text-dim').textContent =
+    dom.createChildOf(labelEl, 'span', 'view-mode__label').textContent = viewMode.label;
+    dom.createChildOf(labelEl, 'span', 'view-mode__sublabel lh-text-dim').textContent =
       ` (${viewMode.subLabel})`;
 
     inputEl.addEventListener('click', () => {
@@ -691,8 +694,8 @@ function renderViewModeButtons(viewModes) {
     });
   }
 
-  const viewModesEl = TreemapUtil.find('.lh-modes');
-  viewModesEl.innerHTML = '';
+  const viewModesEl = dom.find('.lh-modes');
+  viewModesEl.textContent = '';
   viewModes.forEach(render);
 }
 
@@ -701,7 +704,7 @@ function renderViewModeButtons(viewModes) {
  * @param {HTMLElement} el
  */
 function applyActiveClass(currentViewModeId, el) {
-  const viewModesEl = TreemapUtil.find('.lh-modes');
+  const viewModesEl = dom.find('.lh-modes');
   for (const viewModeEl of viewModesEl.querySelectorAll('.view-mode')) {
     if (!(viewModeEl instanceof HTMLElement)) continue;
 
@@ -721,7 +724,7 @@ function injectOptions(options) {
     scriptEl.remove();
   }
 
-  scriptEl = TreemapUtil.createChildOf(document.head, 'script', 'lh-injectedoptions');
+  scriptEl = dom.createChildOf(document.head, 'script', 'lh-injectedoptions');
   scriptEl.textContent = `
     window.__treemapOptions = ${JSON.stringify(options)};
   `;
@@ -742,7 +745,7 @@ class LighthouseTreemap {
     document.addEventListener('paste', this._onPaste);
 
     // Hidden file input to trigger manual file selector.
-    const fileInput = TreemapUtil.find('input#hidden-file-input', document);
+    const fileInput = dom.find('input#hidden-file-input', document);
     fileInput.addEventListener('change', e => {
       if (!e.target) {
         return;
@@ -758,7 +761,7 @@ class LighthouseTreemap {
     });
 
     // A click on the visual placeholder will trigger the hidden file input.
-    const placeholderTarget = TreemapUtil.find('.treemap-placeholder-inner', document);
+    const placeholderTarget = dom.find('.treemap-placeholder-inner', document);
     placeholderTarget.addEventListener('click', e => {
       const target = /** @type {?Element} */ (e.target);
 
@@ -772,8 +775,8 @@ class LighthouseTreemap {
    * @param {LH.Treemap.Options} options
    */
   init(options) {
-    TreemapUtil.find('.treemap-placeholder').classList.add('hidden');
-    TreemapUtil.find('main').classList.remove('hidden');
+    dom.find('.treemap-placeholder').classList.add('hidden');
+    dom.find('main').classList.remove('hidden');
 
     const locale = options.lhr.configSettings.locale;
     document.documentElement.lang = locale;
@@ -792,11 +795,11 @@ class LighthouseTreemap {
     }
 
     if (treemapViewer) {
-      TreemapUtil.find('.lh-treemap').innerHTML = '';
-      TreemapUtil.find('.lh-table').innerHTML = '';
+      dom.find('.lh-treemap').textContent = '';
+      dom.find('.lh-table').textContent = '';
       treemapViewer.abortController.abort();
     }
-    treemapViewer = new TreemapViewer(options, TreemapUtil.find('div.lh-treemap'));
+    treemapViewer = new TreemapViewer(options, dom.find('div.lh-treemap'));
 
     injectOptions(options);
 

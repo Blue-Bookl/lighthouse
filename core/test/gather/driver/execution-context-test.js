@@ -1,7 +1,7 @@
 /**
- * @license Copyright 2020 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {ExecutionContext} from '../../../gather/driver/execution-context.js';
@@ -113,6 +113,27 @@ describe('.evaluateAsync', () => {
     sessionMock.sendCommand.mockRejectedValue(new Error('Timeout'));
 
     const evaluatePromise = makePromiseInspectable(executionContext.evaluateAsync('1 + 1'));
+
+    await flushAllTimersAndMicrotasks();
+    expect(setNextProtocolTimeout).toHaveBeenCalledWith(expectedTimeout);
+    expect(evaluatePromise).toBeDone();
+    await expect(evaluatePromise).rejects.toBeTruthy();
+  });
+
+  it('uses the specific timeout given (isolation)', async () => {
+    const expectedTimeout = 5000;
+    const setNextProtocolTimeout = sessionMock.setNextProtocolTimeout = fnAny();
+    sessionMock.hasNextProtocolTimeout = fnAny().mockReturnValue(true);
+    sessionMock.getNextProtocolTimeout = fnAny().mockReturnValue(expectedTimeout);
+    sessionMock.sendCommand
+      .mockResponse('Page.enable')
+      .mockResponse('Runtime.enable')
+      .mockResponse('Page.getFrameTree', {frameTree: {frame: {id: '1337'}}})
+      .mockResponse('Page.createIsolatedWorld', {executionContextId: 1});
+
+    const evaluatePromise = makePromiseInspectable(executionContext.evaluateAsync('1 + 1', {
+      useIsolation: true,
+    }));
 
     await flushAllTimersAndMicrotasks();
     expect(setNextProtocolTimeout).toHaveBeenCalledWith(expectedTimeout);

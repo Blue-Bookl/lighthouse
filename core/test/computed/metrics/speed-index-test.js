@@ -1,18 +1,16 @@
 /**
- * @license Copyright 2018 The Lighthouse Authors. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
  */
-
-import assert from 'assert/strict';
 
 import {SpeedIndex} from '../../../computed/metrics/speed-index.js';
 import {getURLArtifactFromDevtoolsLog, readJson} from '../../test-utils.js';
 
-const trace = readJson('../../fixtures/traces/progressive-app-m60.json', import.meta);
-const devtoolsLog = readJson('../../fixtures/traces/progressive-app-m60.devtools.log.json', import.meta);
-const trace1msLayout = readJson('../../fixtures/traces/speedindex-1ms-layout-m84.trace.json', import.meta);
-const devtoolsLog1msLayout = readJson('../../fixtures/traces/speedindex-1ms-layout-m84.devtoolslog.json', import.meta); // eslint-disable-line max-len
+const trace = readJson('../../fixtures/artifacts/progressive-app/trace.json', import.meta);
+const devtoolsLog = readJson('../../fixtures/artifacts/progressive-app/devtoolslog.json', import.meta);
+const trace1msLayout = readJson('../../fixtures/artifacts/speedindex-1ms/trace.json.gz', import.meta);
+const devtoolsLog1msLayout = readJson('../../fixtures/artifacts/speedindex-1ms/devtoolslog.json.gz', import.meta); // eslint-disable-line max-len
 
 describe('Metrics: Speed Index', () => {
   const gatherContext = {gatherMode: 'navigation'};
@@ -27,14 +25,13 @@ describe('Metrics: Speed Index', () => {
     expect({
       timing: Math.round(result.timing),
       optimistic: Math.round(result.optimisticEstimate.timeInMs),
-      pessimistic: Math.round(result.pessimisticEstimate.timeInMs),
-    }).toMatchInlineSnapshot(`
-      Object {
-        "optimistic": 605,
-        "pessimistic": 1661,
-        "timing": 1676,
-      }
-    `);
+      pessimistic: Math.round(result.pessimisticEstimate.timeInMs)}).toMatchInlineSnapshot(`
+Object {
+  "optimistic": 379,
+  "pessimistic": 1122,
+  "timing": 1107,
+}
+`);
   });
 
   it('should compute a simulated value on a trace on desktop with 1ms durations', async () => {
@@ -66,9 +63,9 @@ describe('Metrics: Speed Index', () => {
       pessimistic: Math.round(result.pessimisticEstimate.timeInMs),
     }).toMatchInlineSnapshot(`
       Object {
-        "optimistic": 575,
-        "pessimistic": 633,
-        "timing": 635,
+        "optimistic": 397,
+        "pessimistic": 805,
+        "timing": 805,
       }
     `);
   });
@@ -80,8 +77,12 @@ describe('Metrics: Speed Index', () => {
     const result = await SpeedIndex.request({trace, devtoolsLog, gatherContext, settings, URL},
       context);
 
-    assert.equal(result.timing, 605);
-    assert.equal(result.timestamp, 225414777015);
+    await expect(result).toMatchInlineSnapshot(`
+Object {
+  "timestamp": 376406360564,
+  "timing": 379,
+}
+`);
   });
 
   it('should compute an observed value (mobile)', async () => {
@@ -91,7 +92,11 @@ describe('Metrics: Speed Index', () => {
     const result = await SpeedIndex.request({trace, devtoolsLog, gatherContext, settings, URL},
       context);
 
-    assert.equal(result.timing, 605);
-    assert.equal(result.timestamp, 225414777015);
+    await expect(result).toMatchInlineSnapshot(`
+Object {
+  "timestamp": 376406360564,
+  "timing": 379,
+}
+`);
   });
 });
